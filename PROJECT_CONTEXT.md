@@ -152,6 +152,7 @@ Upgrade backlog (pick from here, then log it in the changelog):
 
 Newest first. One line per change: date, what changed, why.
 
+- 2026-10-02: Solution document cover edited by hand by the owner (title, submitted-by, date 02/10/2026); PDF exported from that docx. Do not regenerate with fill_template.py without re-applying these cover edits.
 - 2026-10-02: README and solution document screenshots replaced with the owner's own captures (dashboard, vehicle drawer, Grafana).
 - 2026-10-02: Explainer video recorded and linked (https://drive.google.com/file/d/1R0No_tNViiExbQ-IPfvOw9y1ivHt7P9Z/view?usp=sharing); fresh README screenshots; final PDF and submission folder.
 - 2026-10-02: Explainer script shortened to ~6.5 min at the owner's request; solution document demo timeline updated.

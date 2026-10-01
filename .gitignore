@@ -7,3 +7,4 @@ htmlcov/
 .env
 .ca.crt
 fleetpulse/ml/model.joblib
+~$*
