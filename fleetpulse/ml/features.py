@@ -6,17 +6,13 @@ FEATURES = ["service_overdue_ratio", "vehicle_age_yrs", "odo_10k_km", "max_coola
 
 FEATURE_SQL = """
 WITH d AS (
-  SELECT vin, max(max_coolant)::float8 AS max_coolant, min(min_batt_v)::float8 AS min_batt_v,
+  SELECT vin, max(max_odo)::float8 AS odo, max(max_coolant)::float8 AS max_coolant, min(min_batt_v)::float8 AS min_batt_v,
          sum(dtc_events)::int AS dtc_events, sum(harsh_brakes)::int AS harsh_brakes
-  FROM vehicle_daily WHERE day >= now() - interval '7 days' GROUP BY vin
-), o AS (
-  SELECT DISTINCT ON (vin) vin, odo_km FROM telemetry
-  WHERE ts >= now() - interval '1 day' ORDER BY vin, ts DESC
+  FROM vehicle_daily WHERE day >= current_date - 7 GROUP BY vin
 )
 SELECT v.vin, f.tenant_id, m.service_interval_km, v.last_service_odo_km::float8, v.model_year, m.powertrain,
-       o.odo_km::float8, d.max_coolant, d.min_batt_v, coalesce(d.dtc_events, 0), coalesce(d.harsh_brakes, 0)
-FROM vehicle v JOIN fleet f USING (fleet_id) JOIN vehicle_model m USING (model_id)
-JOIN o USING (vin) LEFT JOIN d USING (vin)
+       d.odo, d.max_coolant, d.min_batt_v, d.dtc_events, d.harsh_brakes
+FROM vehicle v JOIN fleet f USING (fleet_id) JOIN vehicle_model m USING (model_id) JOIN d USING (vin)
 """
 
 

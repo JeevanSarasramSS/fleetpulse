@@ -124,7 +124,7 @@ BEGIN RAISE EXCEPTION 'audit_log is append-only'; END $$ LANGUAGE plpgsql;
 CREATE TRIGGER audit_no_update BEFORE UPDATE OR DELETE ON audit_log
   FOR EACH ROW EXECUTE FUNCTION audit_immutable();
 
--- Telemetry: range-partitioned by day (time) so retention = DROP PARTITION, index (vin, ts) inside each.
+-- Telemetry (hot tier): range-partitioned by hour so retention = DROP PARTITION, index (vin, ts) inside each.
 CREATE TABLE telemetry (
   vin         CHAR(17) NOT NULL,
   ts          TIMESTAMPTZ NOT NULL,
@@ -144,30 +144,8 @@ CREATE UNIQUE INDEX telemetry_idem ON telemetry (vin, seq, ts);  -- idempotent s
 CREATE INDEX telemetry_vin_ts ON telemetry (vin, ts DESC);
 CREATE INDEX telemetry_dtc ON telemetry (ts) WHERE dtcs IS NOT NULL;
 
-CREATE OR REPLACE FUNCTION ensure_telemetry_partitions(days_back INT, days_ahead INT) RETURNS void AS $$
-DECLARE d DATE;
-BEGIN
-  FOR d IN SELECT generate_series(current_date - days_back, current_date + days_ahead, interval '1 day')::date LOOP
-    EXECUTE format('CREATE TABLE IF NOT EXISTS telemetry_%s PARTITION OF telemetry FOR VALUES FROM (%L) TO (%L)',
-                   to_char(d, 'YYYYMMDD'), d, d + 1);
-  END LOOP;
-END $$ LANGUAGE plpgsql;
-SELECT ensure_telemetry_partitions(7, 7);
-
--- Batch analytics: daily per-vehicle rollup (warm tier), refreshed by the batch job.
-CREATE MATERIALIZED VIEW vehicle_daily AS
-SELECT vin, date_trunc('day', ts) AS day,
-       count(*) AS events,
-       max(odo_km) - min(odo_km) AS km,
-       avg(speed_kmh) AS avg_speed,
-       max(coolant_c) AS max_coolant,
-       min(batt_v) AS min_batt_v,
-       count(*) FILTER (WHERE evt = 'HARSH_BRAKE') AS harsh_brakes,
-       count(*) FILTER (WHERE speed_kmh < 1) AS idle_samples,
-       count(*) FILTER (WHERE dtcs IS NOT NULL) AS dtc_events
-FROM telemetry GROUP BY 1, 2
-WITH NO DATA;
-CREATE UNIQUE INDEX vehicle_daily_pk ON vehicle_daily (vin, day);
+-- Hourly partitions, the vehicle_daily rollup and retention live in 002_lifecycle.sql (also re-applied by the
+-- batch job on start, so older databases are migrated in place).
 
 -- Vector store: fault knowledge base for retrieval by the copilot.
 CREATE TABLE fault_knowledge (

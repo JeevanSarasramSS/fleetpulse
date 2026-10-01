@@ -1,4 +1,4 @@
-"""Batch job: refresh warm-tier rollups, score every vehicle, upsert risk_score. Runs on an interval."""
+"""Batch job: roll new telemetry into the warm tier, enforce hot-tier retention, score every vehicle. Runs on an interval."""
 import json
 import os
 import pathlib
@@ -12,6 +12,9 @@ from .. import config
 from .features import FEATURE_SQL, FEATURES, row_to_features
 
 MODEL_PATH = pathlib.Path(__file__).parent / "model.joblib"
+LIFECYCLE_SQL = pathlib.Path(__file__).resolve().parents[2] / "db" / "002_lifecycle.sql"
+RETENTION_HOURS = int(os.environ.get("TELEMETRY_RETENTION_HOURS", "2"))
+LATE_S = 60  # rows newer than this may still be in flight (out-of-order, processor backlog); rolled up next run
 LABELS = {"service_overdue_ratio": "overdue for service", "vehicle_age_yrs": "vehicle age", "odo_10k_km": "high mileage",
           "max_coolant_7d": "coolant running hot", "min_batt_v_7d": "12V battery voltage low",
           "dtc_events_7d": "frequent fault codes", "harsh_brakes_7d": "harsh braking", "is_ev": "EV", "is_hybrid": "hybrid"}
@@ -37,13 +40,50 @@ def explain(x, medians, importance, k=3):
     return [{"feature": f, "label": LABELS[f], "value": v} for _, f, v in sorted(out, reverse=True)[:k]]
 
 
+# Incremental rollup: aggregate only (watermark, now - LATE_S] and merge into the day's row. The watermark moves
+# in the same transaction, so each telemetry row is counted exactly once even if the job crashes mid-run.
+ROLLUP = """
+WITH w AS (
+  SELECT coalesce((SELECT upto FROM rollup_watermark WHERE name = 'vehicle_daily'), now() - interval '1 day') AS lo,
+         now() - make_interval(secs => %(late)s) AS hi
+), ins AS (
+  INSERT INTO vehicle_daily AS d (vin, day, events, min_odo, max_odo, sum_speed, max_coolant, min_batt_v,
+                                  harsh_brakes, idle_samples, dtc_events)
+  SELECT vin, (ts AT TIME ZONE 'UTC')::date, count(*), min(odo_km), max(odo_km), sum(speed_kmh), max(coolant_c), min(batt_v),
+         count(*) FILTER (WHERE evt = 'HARSH_BRAKE'), count(*) FILTER (WHERE speed_kmh < 1),
+         count(*) FILTER (WHERE dtcs IS NOT NULL)
+  FROM telemetry, w WHERE ts > w.lo AND ts <= w.hi GROUP BY 1, 2
+  ON CONFLICT (vin, day) DO UPDATE SET
+    events = d.events + EXCLUDED.events, min_odo = LEAST(d.min_odo, EXCLUDED.min_odo),
+    max_odo = GREATEST(d.max_odo, EXCLUDED.max_odo), sum_speed = d.sum_speed + EXCLUDED.sum_speed,
+    max_coolant = GREATEST(d.max_coolant, EXCLUDED.max_coolant), min_batt_v = LEAST(d.min_batt_v, EXCLUDED.min_batt_v),
+    harsh_brakes = d.harsh_brakes + EXCLUDED.harsh_brakes, idle_samples = d.idle_samples + EXCLUDED.idle_samples,
+    dtc_events = d.dtc_events + EXCLUDED.dtc_events
+  RETURNING 1
+)
+INSERT INTO rollup_watermark (name, upto) SELECT 'vehicle_daily', hi FROM w
+ON CONFLICT (name) DO UPDATE SET upto = EXCLUDED.upto
+RETURNING (SELECT count(*) FROM ins)
+"""
+
+
+def apply_lifecycle(conn):
+    with conn.cursor() as c:
+        c.execute(LIFECYCLE_SQL.read_text())
+    conn.commit()
+
+
 def run_once(conn, bundle):
     t0 = time.time()
     with conn.cursor() as c:
-        c.execute("SELECT ensure_telemetry_partitions(1, 3)")
-        c.execute("SELECT ispopulated FROM pg_matviews WHERE matviewname = 'vehicle_daily'")
-        c.execute("REFRESH MATERIALIZED VIEW " + ("CONCURRENTLY " if c.fetchone()[0] else "") + "vehicle_daily")
+        c.execute("SELECT ensure_telemetry_partitions(2, 24)")
+        c.execute(ROLLUP, {"late": LATE_S})
         conn.commit()
+        c.execute("SELECT drop_old_telemetry(%s)", (RETENTION_HOURS,))
+        dropped = c.fetchone()[0]
+        conn.commit()
+        if dropped:
+            print(f"retention: dropped {dropped} telemetry partition(s) older than {RETENTION_HOURS} h", flush=True)
         c.execute(FEATURE_SQL)
         rows = c.fetchall()
     if not rows:
@@ -64,6 +104,7 @@ def main():
     while True:
         try:
             with psycopg.connect(config.PG_DSN) as conn:
+                apply_lifecycle(conn)
                 while True:
                     n, dt = run_once(conn, bundle)
                     print(f"scored {n} vehicles in {dt:.1f}s", flush=True)
