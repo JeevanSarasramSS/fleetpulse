@@ -65,7 +65,13 @@ def test_copilot_guardrail_and_audit():
 
 
 def test_pipeline_recovers():
+    """Run after killing processors / restarting the broker: events must flow again (consumer-group rebalance
+    and broker leader re-election can take tens of seconds, so poll rather than sample once)."""
     h = token()
-    before = httpx.get(f"{BASE}/api/v1/stats", headers=h).json()["events_total"]
-    time.sleep(15)
-    assert httpx.get(f"{BASE}/api/v1/stats", headers=h).json()["events_total"] > before
+    before, t0 = httpx.get(f"{BASE}/api/v1/stats", headers=h).json()["events_total"], time.time()
+    while time.time() - t0 < 180:
+        time.sleep(5)
+        if httpx.get(f"{BASE}/api/v1/stats", headers=h).json()["events_total"] > before:
+            print(f"pipeline flowing again after {time.time() - t0:.0f} s")
+            return
+    pytest.fail("no new events processed within 180 s")

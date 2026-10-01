@@ -56,7 +56,10 @@ class Processor:
         self.dlq = Producer({"bootstrap.servers": config.KAFKA_BOOTSTRAP})
         self.consumer = Consumer({"bootstrap.servers": config.KAFKA_BOOTSTRAP, "group.id": "processor",
                                   "enable.auto.commit": False, "auto.offset.reset": "earliest",
-                                  "max.poll.interval.ms": 300000})
+                                  "max.poll.interval.ms": 300000,
+                                  # a killed replica is evicted from the group in ~10 s (default 45 s), so the
+                                  # survivors get its partitions back quickly after a crash
+                                  "session.timeout.ms": 10000, "heartbeat.interval.ms": 3000})
         self.consumer.subscribe([config.TOPIC_RAW])
         self.running = True
 

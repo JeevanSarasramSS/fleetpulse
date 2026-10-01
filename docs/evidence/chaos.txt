@@ -9,3 +9,7 @@ processor-1  | processed 126 events/s
 
 after recovery (13:03): both processors draining backlog at ~9K ev/s combined vs ~5.9K ev/s input; lag:
 TOTAL-LAG    183891
+
+2026-10-01 re-run after hardening (CI sequence: kill all 4 processors, start them, restart Redpanda, wait 20 s):
+  before: consumer group stalled ~2-3 min waiting for dead members to time out (session.timeout.ms 45 s default) -> CI chaos step failed
+  after (session.timeout.ms 10 s, heartbeat 3 s): events flowing again 6 s after the 20 s wait (~26 s after broker restart), zero loss (idempotent sinks)
