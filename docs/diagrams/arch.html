@@ -1,0 +1,26 @@
+<html><body style="margin:0;background:#fff;font:14px Segoe UI,Arial">
+<svg width="1200" height="560" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI,Arial" font-size="13">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#444"/></marker></defs>
+<style>.b{fill:#eef4ff;stroke:#2f5fb3;stroke-width:1.5;rx:8}.s{fill:#fff4e5;stroke:#c77800;stroke-width:1.5}.u{fill:#eaf7ee;stroke:#2e7d32;stroke-width:1.5}.t{font-weight:600}.l{stroke:#444;stroke-width:1.4;fill:none;marker-end:url(#a)}.p{fill:#555;font-size:11px}</style>
+<text x="20" y="28" font-size="18" font-weight="700">FleetPulse: container view (C4 level 2) with per-hop latency</text>
+<rect class="b" x="20" y="70" width="190" height="90" rx="8"/><text class="t" x="35" y="95">Vehicle simulator</text><text x="35" y="115">100K vehicles, 2 OEM formats</text><text x="35" y="133">bursts 3x, 1% dupes, 2% late</text>
+<rect class="s" x="290" y="70" width="170" height="90" rx="8"/><text class="t" x="305" y="95">Kafka (Redpanda)</text><text x="305" y="115">telemetry.raw · 12 part.</text><text x="305" y="133">key = VIN · DLQ topic</text>
+<rect class="b" x="540" y="60" width="230" height="110" rx="8"/><text class="t" x="555" y="85">Stream processor × N</text><text x="555" y="105">OEM adapters → canonical event</text><text x="555" y="123">VIN check · Bloom dedup</text><text x="555" y="141">sliding-window rules → alerts</text>
+<rect class="s" x="860" y="40" width="300" height="100" rx="8"/><text class="t" x="875" y="65">PostgreSQL 16 + pgvector</text><text x="875" y="85">3NF core (CP) · telemetry by day</text><text x="875" y="103">vehicle_daily matview (warm)</text><text x="875" y="121">fault KB embeddings (HNSW)</text>
+<rect class="s" x="860" y="190" width="300" height="80" rx="8"/><text class="t" x="875" y="215">Redis (AP)</text><text x="875" y="235">live state · GEO index · pub/sub</text><text x="875" y="253">rate limits · 2 s cache</text>
+<rect class="b" x="540" y="250" width="230" height="80" rx="8"/><text class="t" x="555" y="275">Batch scorer (every 60 s)</text><text x="555" y="295">refresh rollups → features</text><text x="555" y="313">GBM risk model → risk_score</text>
+<rect class="b" x="540" y="380" width="230" height="100" rx="8"/><text class="t" x="555" y="405">FastAPI (stateless × N)</text><text x="555" y="425">JWT · RBAC · tenant scope</text><text x="555" y="443">keyset pages · 429 · audit</text><text x="555" y="461">REST + WebSocket</text>
+<rect class="b" x="860" y="380" width="300" height="100" rx="8"/><text class="t" x="875" y="405">Fleet copilot</text><text x="875" y="425">tenant-scoped tools, propose-only</text><text x="875" y="443">injection screen · grounding</text><text x="875" y="461">Claude tool-use (optional)</text>
+<rect class="u" x="250" y="390" width="210" height="80" rx="8"/><text class="t" x="265" y="415">Web dashboard</text><text x="265" y="435">map · live alerts · 7-day risk</text><text x="265" y="453">copilot · approvals</text>
+<rect class="u" x="20" y="390" width="160" height="80" rx="8"/><text class="t" x="35" y="420">Fleet manager /</text><text x="35" y="440">analyst / admin</text>
+<path class="l" d="M210 115H288"/><text class="p" x="215" y="105">Kafka · ~20 ms</text>
+<path class="l" d="M460 115H538"/><text class="p" x="465" y="105">batches ≤5000</text>
+<path class="l" d="M770 100H858"/><text class="p" x="775" y="92">upsert · 0.3–0.8 s</text>
+<path class="l" d="M770 140L858 215"/><text class="p" x="790" y="190">HSET/GEO/PUB</text>
+<path class="l" d="M770 290H820V140H858"/>
+<path class="l" d="M770 410H830V125H858"/><path class="l" d="M770 430H845V255H858"/><text class="p" x="790" y="370">SQL / Redis</text>
+<path class="l" d="M770 450H858"/>
+<path class="l" d="M538 430H462"/><text class="p" x="470" y="420">HTTPS · WSS &lt;50 ms</text>
+<path class="l" d="M180 430H248"/>
+<text x="20" y="530" font-size="12" fill="#333">Vehicle → screen critical-alert latency measured p50 1.38 s (target &lt; 5 s). Same images run on docker compose, kind/k3d, EKS, GKE or AKS: endpoints come from env/Secrets only.</text>
+</svg></body></html>

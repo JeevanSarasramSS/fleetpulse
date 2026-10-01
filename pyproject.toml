@@ -1,0 +1,15 @@
+[project]
+name = "fleetpulse"
+version = "1.0.0"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: needs the docker compose stack"]
+addopts = "-m 'not integration'"
+
+[tool.coverage.run]
+source = ["fleetpulse/core", "fleetpulse/processor/rules.py", "fleetpulse/agent/guard.py", "fleetpulse/ml/features.py", "fleetpulse/core/embed.py"]
+
+[tool.ruff]
+line-length = 130

@@ -1,0 +1,2 @@
+requests=4000 concurrency=50 rps=233 p50=186.4ms p95=456.1ms p99=576.4ms codes={200: 4000}
+requests=2000 concurrency=10 rps=326 p50=25.0ms p95=70.8ms p99=109.6ms codes={200: 2000}

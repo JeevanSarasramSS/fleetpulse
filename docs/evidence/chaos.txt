@@ -1,0 +1,11 @@
+chaos: killed both processors + restarted broker at 13:02:10
+simulator-1  | t=910s sent=5377432 rate~5909/s burst=False
+simulator-1  | t=920s sent=5427973 rate~5900/s burst=False
+simulator-1  | t=930s sent=5478499 rate~5891/s burst=False
+simulator-1  | t=940s sent=5529001 rate~5881/s burst=False
+processor-2  | processed 127 events/s
+processor-1  | processed 126 events/s
+1 passed, 7 deselected in 15.46s
+
+after recovery (13:03): both processors draining backlog at ~9K ev/s combined vs ~5.9K ev/s input; lag:
+TOTAL-LAG    183891

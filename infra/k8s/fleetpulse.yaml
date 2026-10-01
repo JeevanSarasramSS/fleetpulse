@@ -1,0 +1,110 @@
+# Cloud-agnostic manifests: same YAML on EKS, GKE, AKS or local kind/k3d. Managed Kafka/Postgres/Redis are
+# referenced only through the fleetpulse-config Secret, so switching clouds changes config, not code.
+apiVersion: v1
+kind: Namespace
+metadata: {name: fleetpulse, labels: {pod-security.kubernetes.io/enforce: restricted}}
+---
+apiVersion: v1
+kind: Secret
+metadata: {name: fleetpulse-config, namespace: fleetpulse}
+type: Opaque
+stringData:   # in production: synced from Vault / cloud secret manager via External Secrets Operator
+  KAFKA_BOOTSTRAP: "kafka-bootstrap.kafka:9092"
+  PG_DSN: "postgresql://fleet:CHANGE_ME@postgres.data:5432/fleet?sslmode=require"
+  REDIS_URL: "rediss://redis.data:6380/0"
+  JWT_SECRET: "CHANGE_ME_32_BYTES_MINIMUM_RANDOM"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: api, namespace: fleetpulse}
+spec:
+  replicas: 3
+  selector: {matchLabels: {app: api}}
+  template:
+    metadata: {labels: {app: api}, annotations: {prometheus.io/scrape: "true", prometheus.io/path: /metrics/, prometheus.io/port: "8000"}}
+    spec:
+      topologySpreadConstraints: [{maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: ScheduleAnyway, labelSelector: {matchLabels: {app: api}}}]
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: api
+          image: ghcr.io/jeevansarasramss/fleetpulse:1.0.0
+          envFrom: [{secretRef: {name: fleetpulse-config}}]
+          ports: [{containerPort: 8000}]
+          readinessProbe: {httpGet: {path: /readyz, port: 8000}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /healthz, port: 8000}, periodSeconds: 10}
+          resources: {requests: {cpu: 250m, memory: 256Mi}, limits: {cpu: "1", memory: 512Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: {name: api, namespace: fleetpulse}
+spec:
+  scaleTargetRef: {apiVersion: apps/v1, kind: Deployment, name: api}
+  minReplicas: 3
+  maxReplicas: 20
+  metrics: [{type: Resource, resource: {name: cpu, target: {type: Utilization, averageUtilization: 65}}}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: processor, namespace: fleetpulse}
+spec:
+  replicas: 6   # <= telemetry.raw partitions (scale with KEDA on consumer lag in production)
+  selector: {matchLabels: {app: processor}}
+  template:
+    metadata: {labels: {app: processor}, annotations: {prometheus.io/scrape: "true", prometheus.io/port: "9100"}}
+    spec:
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: processor
+          image: ghcr.io/jeevansarasramss/fleetpulse:1.0.0
+          command: [python, -m, fleetpulse.processor.run]
+          envFrom: [{secretRef: {name: fleetpulse-config}}]
+          resources: {requests: {cpu: 500m, memory: 512Mi}, limits: {cpu: "1", memory: 1Gi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata: {name: risk-scoring, namespace: fleetpulse}
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: batch
+              image: ghcr.io/jeevansarasramss/fleetpulse:1.0.0
+              command: [python, -c, "import joblib,psycopg;from fleetpulse import config;from fleetpulse.ml.score import run_once,MODEL_PATH;print(run_once(psycopg.connect(config.PG_DSN),joblib.load(MODEL_PATH)))"]
+              envFrom: [{secretRef: {name: fleetpulse-config}}]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: {name: api, namespace: fleetpulse}
+spec: {minAvailable: 2, selector: {matchLabels: {app: api}}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: api, namespace: fleetpulse}
+spec: {selector: {app: api}, ports: [{port: 80, targetPort: 8000}]}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny-ingress, namespace: fleetpulse}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress: [{from: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ingress-nginx}}}], ports: [{port: 8000}]}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api
+  namespace: fleetpulse
+  annotations: {nginx.ingress.kubernetes.io/ssl-redirect: "true", cert-manager.io/cluster-issuer: letsencrypt}
+spec:
+  ingressClassName: nginx
+  tls: [{hosts: [fleetpulse.example.com], secretName: fleetpulse-tls}]
+  rules: [{host: fleetpulse.example.com, http: {paths: [{path: /, pathType: Prefix, backend: {service: {name: api, port: {number: 80}}}}]}}]

@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FleetPulse</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{--bg:#0d1117;--panel:#161b22;--line:#30363d;--text:#e6edf3;--muted:#8b949e;--accent:#2f81f7;--crit:#f85149;--warn:#d29922;--ok:#3fb950}
+[hidden]{display:none!important}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
+header{display:flex;align-items:center;gap:16px;padding:10px 16px;border-bottom:1px solid var(--line)}
+header h1{font-size:18px;margin:0}header .who{margin-left:auto;color:var(--muted)}
+button{background:var(--accent);color:#fff;border:0;border-radius:6px;padding:6px 10px;cursor:pointer;font:inherit}
+button.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
+input{background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:7px 9px;font:inherit}
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;padding:12px 16px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px}
+.kpi b{display:block;font-size:22px}.kpi span{color:var(--muted);font-size:12px}
+main{display:grid;grid-template-columns:1.6fr 1fr;gap:12px;padding:0 16px 16px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px;min-height:0}
+.panel h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:0 0 8px}
+#map{height:420px;border-radius:6px}
+.list{max-height:420px;overflow:auto}
+.row{display:flex;gap:8px;align-items:center;padding:6px 4px;border-bottom:1px solid var(--line);cursor:pointer}
+.row:hover{background:#1f2630}.mono{font-family:ui-monospace,Consolas,monospace;font-size:12px}
+.sev{min-width:22px;text-align:center;border-radius:4px;padding:1px 4px;font-weight:600;font-size:12px}
+.s5,.s4{background:var(--crit)}.s3{background:var(--warn);color:#000}.s2,.s1{background:#30363d}
+.bar{height:6px;background:#30363d;border-radius:3px;flex:1;min-width:60px}.bar i{display:block;height:100%;border-radius:3px;background:var(--crit)}
+.muted{color:var(--muted)}.flash{animation:fl 1.2s}@keyframes fl{from{background:#5a1e1e}to{background:transparent}}
+#chat{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow:auto;margin-bottom:8px}
+.msg{padding:7px 9px;border-radius:8px;max-width:95%}.me{background:#1f6feb33;align-self:flex-end}.bot{background:#30363d}
+.trace{font-size:11px;color:var(--muted)}
+#drawer{position:fixed;right:0;top:0;height:100%;width:min(460px,100%);background:var(--panel);border-left:1px solid var(--line);padding:16px;overflow:auto;transform:translateX(100%);transition:.2s}
+#drawer.open{transform:none}
+#login{max-width:340px;margin:12vh auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px;display:flex;flex-direction:column;gap:10px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 16px 16px}
+@media (max-width:900px){.kpis{grid-template-columns:repeat(2,1fr)}main,.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div id="login">
+  <h2 style="margin:0">FleetPulse</h2>
+  <div class="muted">Predictive maintenance for mixed ICE / EV fleets</div>
+  <input id="email" value="manager@aurora.demo" aria-label="email">
+  <input id="pw" type="password" value="demo1234" aria-label="password">
+  <button onclick="login()">Sign in</button>
+  <div class="muted" style="font-size:12px">Demo users: manager@aurora.demo, analyst@aurora.demo (masked locations), admin@aurora.demo. Password demo1234.</div>
+  <div id="loginErr" style="color:var(--crit)"></div>
+</div>
+
+<div id="app" hidden>
+<header><h1>⚡ FleetPulse</h1><span class="muted" id="tenant"></span>
+  <span class="who" id="who"></span><button class="ghost" onclick="logout()">Sign out</button></header>
+<section class="kpis">
+  <div class="kpi"><b id="k-veh">–</b><span>Connected vehicles</span></div>
+  <div class="kpi"><b id="k-eps">–</b><span>Events / sec (live)</span></div>
+  <div class="kpi"><b id="k-crit" style="color:var(--crit)">–</b><span>Open critical alerts</span></div>
+  <div class="kpi"><b id="k-open">–</b><span>Open alerts</span></div>
+  <div class="kpi"><b id="k-risk" style="color:var(--warn)">–</b><span>High 7-day risk (≥30%)</span></div>
+  <div class="kpi"><b id="k-lat">–</b><span>Alert latency (vehicle → screen)</span></div>
+</section>
+<main>
+  <div class="panel"><h2>Live fleet map <span id="maskNote"></span></h2><div id="map"></div></div>
+  <div class="panel"><h2>Live alerts</h2><div class="list" id="alerts"></div></div>
+</main>
+<section class="grid2">
+  <div class="panel"><h2>Most likely to break down in 7 days</h2><div class="list" id="risk"></div></div>
+  <div class="panel"><h2>Fleet copilot</h2>
+    <div id="chat"></div>
+    <div style="display:flex;gap:6px"><input id="q" style="flex:1" placeholder="e.g. Which vehicles will break down this week?" onkeydown="if(event.key==='Enter')ask()"><button onclick="ask()">Ask</button></div>
+    <div class="muted" style="font-size:12px;margin-top:6px">Try: "what's critical right now", "how much can we save", "schedule a work order for &lt;VIN&gt;"</div>
+    <h2 style="margin-top:12px">Work orders (human approval)</h2><div class="list" id="wos" style="max-height:180px"></div>
+  </div>
+</section>
+</div>
+
+<aside id="drawer"><button class="ghost" onclick="drawer.classList.remove('open')">Close</button><div id="dv"></div></aside>
+
+<script>
+const $ = s => document.querySelector(s);
+let token = sessionStorage.getItem('fp_token'), me = JSON.parse(sessionStorage.getItem('fp_me') || 'null');
+let map, layer, ws, lat = [];
+const drawer = $('#drawer');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, {...opts, headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + token}});
+  if (r.status === 401) { logout(); throw new Error('unauthorised'); }
+  if (!r.ok) throw new Error((await r.json()).title || r.status);
+  return r.json();
+}
+async function login() {
+  $('#loginErr').textContent = '';
+  const r = await fetch('/api/v1/auth/token', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({email: $('#email').value, password: $('#pw').value})});
+  if (!r.ok) { $('#loginErr').textContent = 'Invalid credentials'; return; }
+  const j = await r.json(); token = j.access_token; me = {email: $('#email').value, role: j.role, tenant: j.tenant_id};
+  sessionStorage.setItem('fp_token', token); sessionStorage.setItem('fp_me', JSON.stringify(me)); start();
+}
+function logout() { sessionStorage.clear(); location.reload(); }
+
+function start() {
+  $('#login').hidden = true; $('#app').hidden = false;
+  $('#who').textContent = `${me.email} · ${me.role}`; $('#tenant').textContent = `tenant ${me.tenant}`;
+  if (window.L) {  // map degrades gracefully if the tile/CDN is unreachable
+    map = L.map('map', {preferCanvas: true}).setView([20.5, 78.9], 5);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {attribution: '© OpenStreetMap © CARTO'}).addTo(map);
+    layer = L.layerGroup().addTo(map);
+  }
+  refresh(); loadAlerts(); loadRisk(); loadWOs(); connectWS();
+  setInterval(refresh, 3000); setInterval(loadRisk, 30000); setInterval(loadMap, 5000); loadMap();
+}
+async function refresh() {
+  const s = await api('/api/v1/stats');
+  $('#k-veh').textContent = s.vehicles.toLocaleString(); $('#k-eps').textContent = s.events_per_sec.toLocaleString();
+  $('#k-crit').textContent = s.critical_alerts.toLocaleString(); $('#k-open').textContent = s.open_alerts.toLocaleString();
+  $('#k-risk').textContent = s.high_risk.toLocaleString();
+}
+async function loadMap() {
+  const d = await api('/api/v1/live?limit=4000');
+  $('#maskNote').textContent = (d.masked ? '(locations masked for your role) ' : '') + `${d.items.length} shown`;
+  if (!layer) return;
+  layer.clearLayers();
+  d.items.forEach(v => L.circleMarker([v.lat, v.lon], {radius: 2, color: '#2f81f7', weight: 0, fillOpacity: .7})
+    .on('click', () => openVehicle(v.vin)).addTo(layer));
+}
+function alertRow(a, fresh) {
+  const code = a.detail && a.detail.code ? ' ' + a.detail.code : '';
+  return `<div class="row ${fresh ? 'flash' : ''}" onclick="openVehicle('${esc(a.vin)}')"><span class="sev s${a.severity}">${a.severity}</span>
+    <span style="flex:1"><b>${esc(a.rule)}${esc(code)}</b><br><span class="mono muted">${esc(a.vin)}</span></span>
+    ${a.alert_id && me.role !== 'analyst' ? `<button class="ghost" onclick="event.stopPropagation();ack(${a.alert_id},this)">Ack</button>` : ''}</div>`;
+}
+async function loadAlerts() {
+  const d = await api('/api/v1/alerts?limit=40&min_severity=3');
+  $('#alerts').innerHTML = d.items.map(a => alertRow(a)).join('') || '<div class="muted">No open alerts</div>';
+}
+async function ack(id, btn) { await api(`/api/v1/alerts/${id}/ack`, {method: 'POST'}); btn.closest('.row').remove(); }
+function connectWS() {
+  ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/alerts?token=${token}`);
+  ws.onmessage = e => {
+    const a = JSON.parse(e.data); if (a.severity < 3) return;
+    lat.push(Date.now() - a.event_ts_ms); if (lat.length > 50) lat.shift();
+    const sorted = [...lat].sort((x, y) => x - y);
+    $('#k-lat').textContent = `p50 ${(sorted[Math.floor(sorted.length / 2)] / 1000).toFixed(2)} s`;
+    $('#alerts').insertAdjacentHTML('afterbegin', alertRow(a, true));
+    while ($('#alerts').children.length > 60) $('#alerts').lastChild.remove();
+  };
+  ws.onclose = () => setTimeout(connectWS, 2000);
+}
+async function loadRisk() {
+  const d = await api('/api/v1/risk?limit=30');
+  $('#risk').innerHTML = d.items.map(r => `<div class="row" onclick="openVehicle('${esc(r.vin)}')">
+    <span class="mono" style="width:150px">${esc(r.vin)}</span><span style="width:120px">${esc(r.model)}</span>
+    <div class="bar"><i style="width:${(r.score * 100).toFixed(0)}%"></i></div><b style="width:42px;text-align:right">${(r.score * 100).toFixed(0)}%</b>
+    <span class="muted" style="flex:1;font-size:12px">${esc(r.factors.map(f => f.label).join(', '))}</span></div>`).join('')
+    || '<div class="muted">Scoring runs every minute once telemetry arrives…</div>';
+}
+async function loadWOs() {
+  const d = await api('/api/v1/work-orders');
+  $('#wos').innerHTML = d.items.map(w => `<div class="row"><span class="mono">#${w.work_order_id} ${esc(w.vin)}</span>
+    <span style="flex:1" class="muted">${esc(w.reason)}</span><b>${esc(w.status)}</b>
+    ${w.status === 'proposed' && me.role !== 'analyst' ? `<button onclick="decide(${w.work_order_id},true)">Approve</button><button class="ghost" onclick="decide(${w.work_order_id},false)">Reject</button>` : ''}</div>`).join('')
+    || '<div class="muted">None yet. Ask the copilot to schedule one.</div>';
+}
+async function decide(id, approve) { await api(`/api/v1/work-orders/${id}/decision`, {method: 'POST', body: JSON.stringify({approve})}); loadWOs(); }
+async function ask() {
+  const q = $('#q').value.trim(); if (!q) return; $('#q').value = '';
+  $('#chat').insertAdjacentHTML('beforeend', `<div class="msg me">${esc(q)}</div>`);
+  try {
+    const r = await api('/api/v1/copilot', {method: 'POST', body: JSON.stringify({question: q})});
+    $('#chat').insertAdjacentHTML('beforeend', `<div class="msg bot">${esc(r.answer)}<div class="trace">${esc(r.mode)} · tools: ${esc(r.trace.map(t => t.tool).join(' → ') || 'none')} · audited</div></div>`);
+    loadWOs();
+  } catch (e) { $('#chat').insertAdjacentHTML('beforeend', `<div class="msg bot">Error: ${esc(e.message)}</div>`); }
+  $('#chat').scrollTop = 1e9;
+}
+async function openVehicle(vin) {
+  const v = await api('/api/v1/vehicles/' + vin);
+  const risk = v.risk ? `<p><b style="font-size:28px">${(v.risk.score * 100).toFixed(0)}%</b> 7-day breakdown risk
+    <span class="muted">(mileage baseline ${(v.risk.baseline * 100).toFixed(0)}%)</span></p>
+    <p>Why: ${esc(v.risk.factors.map(f => `${f.label} (${f.value})`).join(', ') || 'no single factor')}</p>` : '<p class="muted">Not scored yet</p>';
+  const live = v.live ? `<p class="mono">${v.live.masked ? 'Area ' + esc(v.live.geohash) + ' (masked)' : esc(v.live.lat) + ', ' + esc(v.live.lon)}
+    · ${esc(v.live.speed_kmh)} km/h · coolant ${esc(v.live.coolant_c || '–')}°C · 12V ${esc(v.live.batt_v)} V · SoC ${esc(v.live.soc_pct || '–')}%</p>` : '';
+  const pts = v.series.filter(s => s.coolant_c != null);
+  const spark = pts.length > 1 ? sparkline(pts.map(s => s.coolant_c), 'Coolant °C') : '';
+  $('#dv').innerHTML = `<h2 class="mono">${esc(v.vin)}</h2><p>${esc(v.model)} · ${esc(v.powertrain)} · ${esc(v.year)} · ${esc(v.fleet)}</p>
+    ${risk}${live}${spark}<h3>Recent alerts</h3>${v.alerts.map(a => alertRow(a)).join('') || '<p class="muted">None</p>'}
+    ${me.role !== 'analyst' ? `<p><button onclick="$('#q').value='Schedule a work order for ${esc(v.vin)}';ask();drawer.classList.remove('open')">Propose work order</button></p>` : ''}`;
+  drawer.classList.add('open');
+}
+function sparkline(vals, label) {
+  const w = 400, h = 60, mn = Math.min(...vals), mx = Math.max(...vals) || 1;
+  const p = vals.map((v, i) => `${(i / (vals.length - 1)) * w},${h - ((v - mn) / ((mx - mn) || 1)) * (h - 6) - 3}`).join(' ');
+  return `<div class="muted" style="font-size:12px">${label} (last 30 min, ${mn.toFixed(0)}–${mx.toFixed(0)})</div>
+    <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:60px"><polyline points="${p}" fill="none" stroke="#d29922" stroke-width="2"/></svg>`;
+}
+if (token && me) start();
+</script>
+</body>
+</html>

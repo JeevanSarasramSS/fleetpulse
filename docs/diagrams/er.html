@@ -1,0 +1,23 @@
+<html><body style="margin:0;background:#fff">
+<svg width="1200" height="560" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI,Arial" font-size="12">
+<defs><marker id="c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#555"/></marker></defs>
+<style>.e{fill:#f7f9fc;stroke:#2f5fb3;stroke-width:1.4}.h{fill:#2f5fb3}.ht{fill:#fff;font-weight:700}.l{stroke:#555;stroke-width:1.3;fill:none;marker-end:url(#c)}</style>
+<text x="20" y="26" font-size="18" font-weight="700">Relational core (3NF) · arrows point from child (FK) to parent</text>
+<g id="ents"></g>
+</svg>
+<script>
+const E={tenant:[30,50,["tenant_id PK","name UQ","created_at"]],subscription_plan:[30,190,["plan_code PK","max_vehicles","price_per_vehicle_usd"]],
+subscription:[260,190,["subscription_id PK","tenant_id FK","plan_code FK","starts_on, ends_on"]],app_user:[260,50,["user_id PK","tenant_id FK","email UQ","password_hash","role"]],
+fleet:[490,50,["fleet_id PK","tenant_id FK","name","home_lat, home_lon"]],vehicle_model:[490,330,["model_id PK","oem","name","powertrain","service_interval_km"]],
+vehicle:[720,190,["vin PK (CHAR 17)","fleet_id FK","model_id FK","model_year","last_service_odo_km"]],driver:[720,50,["driver_id PK","fleet_id FK","full_name (PII)","licence_no (PII)","erased_at"]],
+vehicle_assignment:[950,50,["vin FK + assigned_from PK","driver_id FK","assigned_to"]],alert:[950,190,["alert_id PK","tenant_id FK (denorm.)","vin FK","rule, severity, detail","event_ts, acked_by FK","dedup_key UQ"]],
+work_order:[950,370,["work_order_id PK","tenant_id FK","vin FK","reason, est_cost","status, approved_by FK"]],risk_score:[720,370,["vin PK/FK","tenant_id","score, baseline","top_factors JSONB"]],
+audit_log:[260,330,["audit_id PK","at, tenant_id","actor, action","resource, detail","append-only trigger"]]};
+const R=[["subscription","tenant"],["subscription","subscription_plan"],["app_user","tenant"],["fleet","tenant"],["vehicle","fleet"],["vehicle","vehicle_model"],["driver","fleet"],["vehicle_assignment","vehicle"],["vehicle_assignment","driver"],["alert","vehicle"],["work_order","vehicle"],["risk_score","vehicle"]];
+const g=document.getElementById('ents'),W=200,ns="http://www.w3.org/2000/svg",mk=(t,a,x)=>{const e=document.createElementNS(ns,t);for(const k in a)e.setAttribute(k,a[k]);if(x)e.textContent=x;g.appendChild(e);return e};
+const H=n=>26+E[n][2].length*17;
+R.forEach(([a,b])=>{const[x1,y1]=E[a],[x2,y2]=E[b];mk('path',{class:'l',d:`M${x1+W/2} ${y1+H(a)/2}L${x2+W/2} ${y2+H(b)/2}`})});
+for(const n in E){const[x,y,f]=E[n];mk('rect',{class:'e',x,y,width:W,height:H(n),rx:6});mk('rect',{class:'h',x,y,width:W,height:22,rx:6});mk('text',{class:'ht',x:x+8,y:y+16},n);f.forEach((s,i)=>mk('text',{x:x+8,y:y+38+i*17},s))}
+</script>
+<div style="font:12px Segoe UI,Arial;padding:0 20px">Telemetry (partitioned by day, unique (vin, seq, ts)), the vehicle_daily materialised view and fault_knowledge (pgvector) sit outside the 3NF core. Deliberate denormalisation: alert.tenant_id and risk_score.tenant_id avoid a 3-table join on the hottest tenant-filtered queries.</div>
+</body></html>

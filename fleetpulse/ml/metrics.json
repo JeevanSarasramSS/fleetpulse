@@ -1,0 +1,37 @@
+{
+  "n_vehicles": 100000,
+  "positive_rate": 0.0276,
+  "train_seconds": 4.3,
+  "model": {
+    "roc_auc": 0.8777,
+    "pr_auc": 0.1898,
+    "precision_at_2pct": 0.278
+  },
+  "baseline_service_overdue": {
+    "roc_auc": 0.6883,
+    "pr_auc": 0.0538,
+    "precision_at_2pct": 0.066
+  },
+  "features": [
+    "service_overdue_ratio",
+    "vehicle_age_yrs",
+    "odo_10k_km",
+    "max_coolant_7d",
+    "min_batt_v_7d",
+    "dtc_events_7d",
+    "harsh_brakes_7d",
+    "is_ev",
+    "is_hybrid"
+  ],
+  "feature_importance": {
+    "min_batt_v_7d": 0.02164,
+    "max_coolant_7d": 0.01192,
+    "dtc_events_7d": 0.0101,
+    "service_overdue_ratio": 0.00433,
+    "odo_10k_km": 0.00258,
+    "vehicle_age_yrs": 0.00217,
+    "harsh_brakes_7d": 0.00205,
+    "is_ev": 0.00053,
+    "is_hybrid": 0.00016
+  }
+}

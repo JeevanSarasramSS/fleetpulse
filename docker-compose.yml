@@ -1,0 +1,92 @@
+# One command: docker compose up --build   ->  http://localhost:8000  (login manager@aurora.demo / demo1234)
+x-app: &app
+  build: .
+  image: fleetpulse:latest
+  restart: unless-stopped
+  env_file: .env.example
+  environment:
+    KAFKA_BOOTSTRAP: redpanda:9092
+    PG_DSN: postgresql://fleet:fleet@postgres:5432/fleet
+    REDIS_URL: redis://redis:6379/0
+
+services:
+  redpanda:
+    image: redpandadata/redpanda:v24.2.4
+    command: [redpanda, start, --mode, dev-container, --smp, "1", --memory, 1G, --overprovisioned,
+              --kafka-addr, "PLAINTEXT://0.0.0.0:9092", --advertise-kafka-addr, "PLAINTEXT://redpanda:9092"]
+    ports: ["19092:9092"]
+    healthcheck: {test: ["CMD", "rpk", "cluster", "health"], interval: 5s, retries: 30}
+
+  topics:
+    image: redpandadata/redpanda:v24.2.4
+    depends_on: {redpanda: {condition: service_healthy}}
+    entrypoint: ["/bin/bash", "-c"]
+    command: ["rpk -X brokers=redpanda:9092 topic create telemetry.raw -p 12 -c retention.ms=86400000 || true;
+               rpk -X brokers=redpanda:9092 topic create telemetry.dlq -p 3 || true;
+               rpk -X brokers=redpanda:9092 topic create alerts -p 3 || true"]
+    restart: "no"
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment: {POSTGRES_USER: fleet, POSTGRES_PASSWORD: fleet, POSTGRES_DB: fleet}
+    command: [postgres, -c, shared_buffers=512MB, -c, max_connections=200, -c, synchronous_commit=off]
+    volumes: ["./db:/docker-entrypoint-initdb.d:ro", "pgdata:/var/lib/postgresql/data"]
+    ports: ["5432:5432"]
+    healthcheck: {test: ["CMD", "pg_isready", "-U", "fleet"], interval: 3s, retries: 40}
+
+  redis:
+    image: redis:7-alpine
+    command: [redis-server, --save, "", --maxmemory, 512mb, --maxmemory-policy, allkeys-lru]
+    ports: ["6379:6379"]
+    healthcheck: {test: ["CMD", "redis-cli", "ping"], interval: 3s, retries: 20}
+
+  seed:
+    <<: *app
+    command: [python, -m, fleetpulse.simulator.seed]
+    restart: "no"
+    depends_on: {postgres: {condition: service_healthy}}
+
+  processor:
+    <<: *app
+    command: [python, -m, fleetpulse.processor.run]
+    deploy: {replicas: 2}   # consumer group splits the 12 partitions; scale with --scale processor=N
+    depends_on:
+      seed: {condition: service_completed_successfully}
+      topics: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+
+  simulator:
+    <<: *app
+    command: [python, -m, fleetpulse.simulator.run]
+    depends_on:
+      topics: {condition: service_completed_successfully}
+      seed: {condition: service_completed_successfully}
+
+  batch:
+    <<: *app
+    command: [python, -m, fleetpulse.ml.score]
+    depends_on: {seed: {condition: service_completed_successfully}}
+
+  api:
+    <<: *app
+    ports: ["8000:8000"]
+    depends_on:
+      seed: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    healthcheck: {test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/healthz')"], interval: 5s, retries: 20}
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes: ["./infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+    ports: ["9090:9090"]
+    profiles: [observability]
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment: {GF_AUTH_ANONYMOUS_ENABLED: "true", GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer}
+    volumes: ["./infra/grafana:/etc/grafana/provisioning:ro"]
+    ports: ["3000:3000"]
+    profiles: [observability]
+
+volumes:
+  pgdata:

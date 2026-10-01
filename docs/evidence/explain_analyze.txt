@@ -1,0 +1,21 @@
+== SELECT ts, speed_kmh, coolant_c FROM telemetry WHERE vin = '2BRBPJBS7KA586106' AND ts > now() - interval '30 minutes' ORDER BY ts DESC LIMIT 60
+before: Limit  (cost=65220.41..65220.52 rows=44 width=16) (actual time=167.084..174.195 rows=30 loops=1)
+before:                     ->  Parallel Seq Scan on telemetry_20261001 telemetry_1  (cost=0.00..64012.09 rows=12 width=16) (actual time=19.614..163.282 rows=10 loops=3)
+before:                     ->  Parallel Seq Scan on telemetry_20261002 telemetry_2  (cost=0.00..14.47 rows=1 width=16) (actual time=0.000..0.001 rows=0 loops=1)
+after: Limit  (cost=2.57..239.67 rows=44 width=16) (actual time=0.257..0.577 rows=30 loops=1)
+after:         ->  Index Scan using telemetry_20261008_vin_ts_idx on telemetry_20261008 telemetry_8  (cost=0.15..8.17 rows=1 width=16) (actual time=0.012..0.012 rows=0 loops=1)
+after:         ->  Index Scan using telemetry_20261007_vin_ts_idx on telemetry_20261007 telemetry_7  (cost=0.15..8.17 rows=1 width=16) (actual time=0.007..0.007 rows=0 loops=1)
+== SELECT alert_id FROM alert WHERE tenant_id = 1 AND acked_at IS NULL AND severity >= 3 ORDER BY alert_id DESC LIMIT 50
+before: Limit  (cost=513.02..513.14 rows=50 width=8) (actual time=2.705..2.711 rows=50 loops=1)
+before:         ->  Seq Scan on alert  (cost=0.00..404.32 rows=3272 width=8) (actual time=0.023..2.320 rows=3199 loops=1)
+before: Execution Time: 2.738 ms
+after: Limit  (cost=0.29..9.29 rows=50 width=8) (actual time=0.030..0.125 rows=50 loops=1)
+after:   ->  Index Scan Backward using alert_pkey on alert  (cost=0.29..589.59 rows=3272 width=8) (actual time=0.027..0.119 rows=50 loops=1)
+after: Execution Time: 0.149 ms
+== SELECT vin, score FROM risk_score WHERE tenant_id = 1 ORDER BY score DESC LIMIT 25
+before: Limit  (cost=8382.07..8384.99 rows=25 width=22) (actual time=25.244..27.193 rows=25 loops=1)
+before:               ->  Parallel Seq Scan on risk_score  (cost=0.00..6984.21 rows=14098 width=22) (actual time=0.010..12.403 rows=11178 loops=3)
+before: Execution Time: 27.256 ms
+after: Limit  (cost=0.42..19.52 rows=25 width=22) (actual time=0.065..0.343 rows=25 loops=1)
+after:   ->  Index Scan using risk_tenant_score on risk_score  (cost=0.42..25850.59 rows=33836 width=22) (actual time=0.063..0.336 rows=25 loops=1)
+after: Execution Time: 0.396 ms
