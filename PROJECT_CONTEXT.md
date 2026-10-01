@@ -152,6 +152,7 @@ Upgrade backlog (pick from here, then log it in the changelog):
 
 Newest first. One line per change: date, what changed, why.
 
+- 2026-10-02: README and solution document screenshots replaced with the owner's own captures (dashboard, vehicle drawer, Grafana).
 - 2026-10-02: Explainer video recorded and linked (https://drive.google.com/file/d/1R0No_tNViiExbQ-IPfvOw9y1ivHt7P9Z/view?usp=sharing); fresh README screenshots; final PDF and submission folder.
 - 2026-10-02: Explainer script shortened to ~6.5 min at the owner's request; solution document demo timeline updated.
 - 2026-10-02: Honest soak results; narrated 9.5-min explainer script (docs/demo-script.md); docs and solution document refreshed.

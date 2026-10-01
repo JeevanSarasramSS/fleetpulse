@@ -110,6 +110,7 @@ A["8. Security & Compliance"] = [
 ]
 A["10. Observability"] = [
     "Every service exposes Prometheus metrics: fp_events_total{outcome=ok|late|duplicate|dlq}, fp_ingest_latency_seconds (vehicle timestamp → processed), fp_alerts_total{rule}, fp_batch_seconds, fp_api_latency_seconds{route}. docker compose --profile observability starts Prometheus and Grafana with a provisioned “FleetPulse pipeline” dashboard (events/s by outcome, ingest latency p50/p95/p99, alerts by rule, batch time, API p95 by route, Kafka ingest rate). Consumer lag comes from rpk group describe / the Kafka exporter. Logs are structured stdout collected by the platform (Loki/ELK). The dashboard itself shows live events/s and measured alert latency.",
+    ("img", "docs/evidence/grafana.png", 6.3),
     "Troubleshooting a latency spike: (1) Grafana: is fp_api_latency p95 up for one route or all? (2) If all, check pod CPU and the Postgres connection pool; if one route, run EXPLAIN ANALYZE on its query (as in 5.3). (3) For alert latency, compare fp_ingest_latency with consumer lag: rising lag means processors are saturated, so scale replicas up to the partition count; flat lag but slow batches (fp_batch_seconds) points to Postgres writes. (4) Correlate with simulator burst logs. OpenTelemetry tracing across services is the next step.",
 ]
 A["11. AI / ML Component (if used)"] = [
