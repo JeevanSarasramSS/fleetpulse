@@ -43,7 +43,7 @@ Per-hop latency (measured locally): vehicle → Kafka ~20 ms (linger) · process
 | Redis | live state, geo index, rate limits, alert pub/sub, cache | AP |
 | pgvector | fault / repair knowledge embeddings for the copilot | CP |
 
-See [docs/adr](docs/adr) for decisions and [docs/threat-model.md](docs/threat-model.md) for STRIDE.
+See [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) for the project history, status and roadmap, [docs/adr](docs/adr) for decisions and [docs/threat-model.md](docs/threat-model.md) for STRIDE.
 
 ## Results (all from this repo, see `docs/evidence/`)
 
