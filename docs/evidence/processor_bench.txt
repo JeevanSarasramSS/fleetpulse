@@ -1,1 +1,24 @@
 events=200000 seconds=5.90 events_per_sec_per_core=33905 alerts=2427
+
+--- 2026-10-01 end-to-end pipeline load tests (tests/load/pipeline_load.py) ---
+Setup: 16-vCPU laptop, Docker Desktop (WSL2), fresh database (hourly partitions), Redpanda 1 node, Postgres 16 1 node.
+Zero-loss check: rows written to telemetry since the start == unique (vin, seq) events the simulator(s) sent.
+
+rate=10000/s base, 3x bursts for 10 s every 60 s, duration=120 s, processors=8
+sent=1607991 (incl. duplicate deliveries)  unique=1592000  written=1592000  missing=0 (0.0000%)
+producer phase 124 s -> 12838 unique events/s offered; backlog drained 1 s after the producer stopped; end-to-end 12769 events/s processed
+consumer lag: max=52332 median=1458 samples=22
+
+rate=25000/s base, 3x bursts for 10 s every 60 s, duration=120 s, processors=12
+sent=3287368 (incl. duplicate deliveries)  unique=3255000  written=3255000  missing=0 (0.0000%)
+producer phase 127 s -> 25726 unique events/s offered; backlog drained 9 s after the producer stopped; end-to-end 24033 events/s processed
+consumer lag: max=136644 median=25784 samples=24
+
+rate=60000/s base over 4 producer(s), 3x bursts for 10 s every 60 s, duration=120 s, processors=12
+producer phase 127 s -> 69094 unique events/s offered (Kafka accepted all of it)
+processing ceiling ~12-24K events/s: Postgres (one node, 3 indexes on telemetry) is the bottleneck; the backlog
+(max lag 7.4M) is buffered durably in Kafka and drains afterwards - it is lag, not loss.
+
+Same run on the long-lived demo database (a legacy 3 GB daily partition, indexes no longer in cache): ~5.7K/s,
+which is why telemetry moved to hourly partitions. Conclusion: ~24K events/s sustained end to end with zero loss on
+one laptop; 100K/s needs the scale-out in ADR-0002 (ClickHouse/Scylla for raw telemetry, more partitions/brokers).

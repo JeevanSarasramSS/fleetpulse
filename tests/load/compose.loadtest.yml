@@ -1,0 +1,6 @@
+# Overlay for load tests only: lifts the per-user rate limit so one test user can drive the API.
+# docker compose -f docker-compose.yml -f tests/load/compose.loadtest.yml up -d api
+services:
+  api:
+    environment:
+      RATE_LIMIT_PER_MIN: "10000000"

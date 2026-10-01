@@ -134,6 +134,9 @@ class Processor:
         n_ok = len(rows[0])
         p.incrby("stats:events", n_ok)
         p.set("stats:topdtc", json.dumps(self.topk.top()))
+        if latest:  # data freshness: how old the newest state we just made readable is (vehicle clock -> Redis)
+            ages = sorted(time.time() * 1000 - e.ts_ms for e in latest.values())
+            p.set("stats:fresh_ms", round(ages[len(ages) // 2]), ex=30)
         p.execute()
         self.consumer.commit(asynchronous=False)  # commit only after sinks succeeded
         return n_ok

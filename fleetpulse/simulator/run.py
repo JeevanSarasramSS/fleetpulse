@@ -19,10 +19,11 @@ MODEL = {m[0]: m for m in MODELS}
 
 
 class Fleet:
-    def __init__(self, n: int, seed: int = 3):
+    def __init__(self, n: int, seed: int = 3, shard: tuple[int, int] = (0, 1)):
         fleets = make_fleets()
         home = {f[0]: (f[3], f[4]) for f in fleets}
-        rows = list(make_vehicles(n, fleets))
+        rows = list(make_vehicles(n, fleets))[shard[0]::shard[1]]  # shard i/k simulates every k-th vehicle
+        n = len(rows)
         self.vins = [r[0] for r in rows]
         self.oem = [MODEL[r[2]][1] for r in rows]
         self.pt = [MODEL[r[2]][3] for r in rows]
@@ -102,6 +103,7 @@ def main():
     ap.add_argument("--ooo", type=float, default=0.02)
     ap.add_argument("--burst-every", type=float, default=120)
     ap.add_argument("--stdout", action="store_true", help="print JSON lines instead of Kafka")
+    ap.add_argument("--shard", default="0/1", help="i/k: simulate every k-th vehicle starting at i, to run k producers in parallel")
     a = ap.parse_args()
 
     from confluent_kafka import Producer
@@ -109,9 +111,9 @@ def main():
                                            "compression.type": "lz4", "enable.idempotence": True,
                                            "queue.buffering.max.messages": 2_000_000})
     t_build = time.time()
-    fleet = Fleet(a.vehicles)
+    fleet = Fleet(a.vehicles, shard=tuple(int(x) for x in a.shard.split("/")))
     print(f"simulating {fleet.n} vehicles (built in {time.time() - t_build:.1f}s), base rate {a.rate}/s", flush=True)
-    rnd, tick, cursor, held, sent, t0 = random.Random(5), 0.1, 0, [], 0, time.time()
+    rnd, tick, cursor, held, sent, uniq, t0 = random.Random(5 + fleet.n), 0.1, 0, [], 0, 0, time.time()
     while not a.duration or time.time() - t0 < a.duration:
         start = time.time()
         burst = a.burst_every and (start - t0) % a.burst_every < 10  # 3x burst for 10s every N s
@@ -126,8 +128,10 @@ def main():
             r = rnd.random()
             if r < a.ooo:
                 held.append(p)  # delivered next tick -> out of order
+                uniq += 1
                 continue
             out.append(p)
+            uniq += 1
             if r < a.ooo + a.dup:
                 out.append(p)  # duplicate delivery (at-least-once device retry)
         for p in out:
@@ -147,9 +151,16 @@ def main():
         if int(start - t0) % 10 == 0 and (start - t0) % 10 < tick:
             print(f"t={start - t0:.0f}s sent={sent} rate~{sent / max(time.time() - t0, 1e-6):.0f}/s burst={bool(burst)}", flush=True)
         time.sleep(max(0.0, tick - (time.time() - start)))
+    for p in held:  # deliver the last tick's late events too, so every counted event is actually sent
+        if prod is None:
+            print(json.dumps(p))
+        else:
+            prod.produce(config.TOPIC_RAW, json.dumps(p).encode(), key=(p.get("vin") or p.get("vehicleId")).encode())
+    sent += len(held)
     if prod is not None:
-        prod.flush(30)
-    print(f"done: {sent} events in {time.time() - t0:.1f}s", flush=True)
+        prod.flush(60)
+    # unique = distinct (vin, seq) events; sent also counts deliberate duplicate deliveries
+    print(f"done: {sent} events ({uniq} unique) in {time.time() - t0:.1f}s", flush=True)
 
 
 if __name__ == "__main__":

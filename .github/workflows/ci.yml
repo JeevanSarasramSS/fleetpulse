@@ -47,3 +47,40 @@ jobs:
           pytest -m integration tests/integration -o addopts="" -k recovers
       - if: always()
         run: docker compose logs --tail 200
+  k8s:
+    # Portability proof: the production K8s manifests, unchanged except for configuration (infra/k8s/kind),
+    # deployed on a real Kubernetes cluster (kind) under the "restricted" Pod Security profile.
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: helm/kind-action@v1
+        with: {cluster_name: fleetpulse}
+      - run: docker build -t fleetpulse:latest . && kind load docker-image fleetpulse:latest --name fleetpulse
+      - name: Deploy (manifests + in-cluster stand-ins for managed Postgres/Redis/Kafka)
+        run: |
+          kubectl kustomize --load-restrictor LoadRestrictionsNone infra/k8s/kind | kubectl apply -f -
+          kubectl -n data wait --for=condition=available deploy --all --timeout=300s
+          kubectl -n fleetpulse wait --for=condition=complete job/seed --timeout=300s
+          kubectl -n fleetpulse rollout restart deploy/processor   # reload the seeded fleet
+          kubectl -n fleetpulse rollout status deploy/processor --timeout=180s
+          kubectl -n fleetpulse rollout status deploy/api --timeout=180s
+          kubectl apply -f infra/k8s/kind/stream-job.yaml
+      - name: Smoke test through the Service
+        run: |
+          kubectl -n fleetpulse port-forward svc/api 8080:80 >/dev/null 2>&1 &
+          sleep 5
+          curl -sf localhost:8080/readyz
+          TOKEN=$(curl -sf -X POST localhost:8080/api/v1/auth/token -H 'Content-Type: application/json' \
+            -d '{"email":"manager@aurora.demo","password":"demo1234"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+          for i in $(seq 1 40); do
+            S=$(curl -sf localhost:8080/api/v1/stats -H "Authorization: Bearer $TOKEN"); echo "$S"
+            python3 -c 'import sys,json;s=json.loads(sys.argv[1]);sys.exit(0 if s["vehicles"]>0 and s["events_total"]>0 else 1)' "$S" && exit 0
+            sleep 5
+          done
+          exit 1
+      - if: always()
+        run: |
+          kubectl get pods -A -o wide
+          kubectl -n fleetpulse logs deploy/processor --tail 30 || true
+          kubectl -n fleetpulse logs job/simulator --tail 10 || true

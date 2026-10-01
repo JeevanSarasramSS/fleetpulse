@@ -74,11 +74,13 @@ spec:
       template:
         spec:
           restartPolicy: OnFailure
+          securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}  # "restricted" PSS
           containers:
             - name: batch
               image: ghcr.io/jeevansarasramss/fleetpulse:1.0.0
               command: [python, -c, "import joblib,psycopg;from fleetpulse import config;from fleetpulse.ml.score import run_once,MODEL_PATH;print(run_once(psycopg.connect(config.PG_DSN),joblib.load(MODEL_PATH)))"]
               envFrom: [{secretRef: {name: fleetpulse-config}}]
+              securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget

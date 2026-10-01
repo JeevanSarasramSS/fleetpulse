@@ -1,2 +1,14 @@
 requests=4000 concurrency=50 rps=233 p50=186.4ms p95=456.1ms p99=576.4ms codes={200: 4000}
 requests=2000 concurrency=10 rps=326 p50=25.0ms p95=70.8ms p99=109.6ms codes={200: 2000}
+
+--- 2026-10-01 re-run after hardening ---
+Setup: 16-vCPU laptop, docker compose, pipeline running at 5,000 events/s with 4 processors in parallel.
+API: 4 uvicorn workers (WEB_CONCURRENCY=4, new image default), rate limit lifted via tests/load/compose.loadtest.yml.
+Client: tests/load/api_load.py from inside the compose network, load split over 4-8 client processes
+(the earlier single-process client capped at ~340 req/s and measured itself, and Docker Desktop's Windows
+port proxy added ~150 ms of queueing even to /healthz).
+requests=2000 concurrency=10  clients=4 rps=584 p50=10.3ms  p95=18.1ms  p99=29.9ms  codes={200: 2000}
+requests=8000 concurrency=50  clients=4 rps=775 p50=50.6ms  p95=109.9ms p99=132.1ms codes={200: 8000}
+requests=8000 concurrency=100 clients=8 rps=721 p50=105.4ms p95=223.5ms p99=257.9ms codes={200: 8000}
+Target p95 < 200 ms / p99 < 500 ms: met at 50 concurrent users; at 100 concurrent p99 is met and p95 is 224 ms
+(scale out: the API is stateless, add replicas).

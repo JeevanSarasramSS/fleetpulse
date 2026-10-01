@@ -20,7 +20,7 @@ OPT = type(None)
 CONTRACTS = [
     ("GET", "/api/v1/stats", None, 200,
      {"vehicles": int, "events_per_sec": int, "critical_alerts": int, "open_alerts": int, "high_risk": int,
-      "events_total": int, "top_dtcs": list}),
+      "events_total": int, "top_dtcs": list, "data_age_ms": (int, OPT)}),
     ("GET", "/api/v1/live?limit=10", None, 200,
      {"masked": bool, "total": int, "items[].vin": str, "items[].lat": NUM, "items[].lon": NUM}),
     ("GET", "/api/v1/alerts?limit=5&min_severity=3", None, 200,

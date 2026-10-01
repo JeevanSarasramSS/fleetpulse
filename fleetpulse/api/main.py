@@ -88,9 +88,11 @@ async def login(body: LoginIn):
 # ---------- fleet overview ----------
 @app.get("/api/v1/stats")
 async def stats(p: Principal = Depends(current_user)):
-    cached = await rds.get(f"cache:stats:{p.tenant_id}")
-    if cached:  # 2 s TTL cache: dashboards poll this; counts over 100K rows need not be per-request fresh
-        return json.loads(cached)
+    cached, fresh = await rds.mget(f"cache:stats:{p.tenant_id}", "stats:fresh_ms")
+    if cached:  # 2 s TTL cache for the SQL counts; the freshness figure is always read live
+        out = json.loads(cached)
+        out["data_age_ms"] = None if fresh is None else int(fresh)
+        return out
     async with pool.connection() as conn:
         cur = await conn.execute("""
           SELECT (SELECT count(*) FROM vehicle v JOIN fleet f USING (fleet_id) WHERE f.tenant_id = %(t)s),
@@ -98,9 +100,10 @@ async def stats(p: Principal = Depends(current_user)):
                  (SELECT count(*) FROM alert WHERE tenant_id = %(t)s AND acked_at IS NULL AND severity >= 4),
                  (SELECT count(*) FROM risk_score WHERE tenant_id = %(t)s AND score >= 0.3)""", {"t": p.tenant_id})
         vehicles, open_alerts, critical, high_risk = await cur.fetchone()
-    eps, total, top = await rds.mget("stats:eps", "stats:events", "stats:topdtc")
+    eps, total, top, fresh = await rds.mget("stats:eps", "stats:events", "stats:topdtc", "stats:fresh_ms")
     out = {"vehicles": vehicles, "open_alerts": open_alerts, "critical_alerts": critical, "high_risk": high_risk,
-            "events_per_sec": int(eps or 0), "events_total": int(total or 0), "top_dtcs": json.loads(top or "[]")}
+            "events_per_sec": int(eps or 0), "events_total": int(total or 0), "top_dtcs": json.loads(top or "[]"),
+            "data_age_ms": None if fresh is None else int(fresh)}  # vehicle timestamp -> readable in the API (median)
     await rds.set(f"cache:stats:{p.tenant_id}", json.dumps(out), ex=2)
     return out
 

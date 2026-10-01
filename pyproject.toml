@@ -10,7 +10,12 @@ markers = ["integration: needs the docker compose stack"]
 addopts = "-m 'not integration'"
 
 [tool.coverage.run]
-source = ["fleetpulse/core", "fleetpulse/processor/rules.py", "fleetpulse/agent/guard.py", "fleetpulse/ml/features.py", "fleetpulse/core/embed.py"]
+# Unit-coverage gate covers the domain logic (algorithms, rules, guardrails, features, fleet generator).
+# I/O entrypoints (API, Kafka loop, seeder, batch loop, LLM planner) are exercised by the integration,
+# contract and BDD suites against the live stack instead; whole-package unit coverage is ~43%.
+source = ["fleetpulse"]
+omit = ["fleetpulse/api/*", "fleetpulse/processor/run.py", "fleetpulse/simulator/run.py", "fleetpulse/simulator/seed.py",
+        "fleetpulse/agent/copilot.py", "fleetpulse/ml/score.py", "fleetpulse/ml/train.py"]
 
 [tool.ruff]
 line-length = 130

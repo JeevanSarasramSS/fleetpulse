@@ -1,0 +1,48 @@
+# Portability proof: the production manifests (../fleetpulse.yaml) deployed unchanged on a local kind cluster.
+# Only configuration differs: the image comes from the local build, the config Secret points at in-cluster
+# Postgres/Redis/Redpanda (deps.yaml) instead of managed services, replica counts fit a CI runner, and the
+# Ingress (needs an ingress controller + cert-manager) is left out. CI: .github/workflows/ci.yml (k8s job).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../fleetpulse.yaml
+  - deps.yaml
+  - jobs.yaml
+images:
+  - {name: ghcr.io/jeevansarasramss/fleetpulse, newName: fleetpulse, newTag: latest}
+configMapGenerator:
+  - name: db-init
+    namespace: data
+    files: [../../../db/001_schema.sql, ../../../db/002_lifecycle.sql]
+generatorOptions: {disableNameSuffixHash: true}
+patches:
+  - target: {kind: Secret, name: fleetpulse-config}
+    patch: |-
+      - op: replace
+        path: /stringData
+        value:
+          KAFKA_BOOTSTRAP: "redpanda.data:9092"
+          PG_DSN: "postgresql://fleet:fleet@postgres.data:5432/fleet"
+          REDIS_URL: "redis://redis.data:6379/0"
+          JWT_SECRET: "kind-ci-only-not-a-secret-0123456789abcdef"
+          DEMO_PASSWORD: "demo1234"
+  - target: {kind: Deployment, name: api}
+    patch: |-
+      - {op: replace, path: /spec/replicas, value: 1}
+      - {op: add, path: /spec/template/spec/containers/0/imagePullPolicy, value: IfNotPresent}
+  - target: {kind: Deployment, name: processor}
+    patch: |-
+      - {op: replace, path: /spec/replicas, value: 2}
+      - {op: add, path: /spec/template/spec/containers/0/imagePullPolicy, value: IfNotPresent}
+  - target: {kind: HorizontalPodAutoscaler, name: api}
+    patch: |-
+      - {op: replace, path: /spec/minReplicas, value: 1}
+  - target: {kind: PodDisruptionBudget, name: api}
+    patch: |-
+      - {op: replace, path: /spec/minAvailable, value: 0}
+  - target: {kind: Ingress, name: api}
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata: {name: api, namespace: fleetpulse}

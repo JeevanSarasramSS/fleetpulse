@@ -1,0 +1,18 @@
+# One-off seed job for the kind smoke test (a 20K-vehicle fleet).
+# They run under the namespace's "restricted" Pod Security profile like the production workloads.
+apiVersion: batch/v1
+kind: Job
+metadata: {name: seed, namespace: fleetpulse}
+spec:
+  backoffLimit: 20
+  template:
+    spec:
+      restartPolicy: OnFailure
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: seed
+          image: ghcr.io/jeevansarasramss/fleetpulse:1.0.0
+          imagePullPolicy: IfNotPresent
+          command: [python, -m, fleetpulse.simulator.seed, "20000"]
+          envFrom: [{secretRef: {name: fleetpulse-config}}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}

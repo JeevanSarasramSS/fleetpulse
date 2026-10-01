@@ -1,0 +1,17 @@
+# Applied by CI after the processors have restarted with the seeded fleet (kubectl apply -f).
+apiVersion: batch/v1
+kind: Job
+metadata: {name: simulator, namespace: fleetpulse}
+spec:
+  backoffLimit: 20
+  template:
+    spec:
+      restartPolicy: OnFailure
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: simulator
+          image: fleetpulse:latest
+          imagePullPolicy: IfNotPresent
+          command: [python, -m, fleetpulse.simulator.run, --vehicles, "20000", --rate, "1000", --duration, "90"]
+          envFrom: [{secretRef: {name: fleetpulse-config}}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}

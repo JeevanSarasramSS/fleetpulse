@@ -14,7 +14,7 @@ header h1{font-size:18px;margin:0}header .who{margin-left:auto;color:var(--muted
 button{background:var(--accent);color:#fff;border:0;border-radius:6px;padding:6px 10px;cursor:pointer;font:inherit}
 button.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
 input{background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:7px 9px;font:inherit}
-.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;padding:12px 16px}
+.kpis{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;padding:12px 16px}
 .kpi{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px}
 .kpi b{display:block;font-size:22px}.kpi span{color:var(--muted);font-size:12px}
 main{display:grid;grid-template-columns:1.6fr 1fr;gap:12px;padding:0 16px 16px}
@@ -62,6 +62,7 @@ main{display:grid;grid-template-columns:1.6fr 1fr;gap:12px;padding:0 16px 16px}
   <div class="kpi"><b id="k-open">–</b><span>Open alerts</span></div>
   <div class="kpi"><b id="k-risk" style="color:var(--warn)">–</b><span>High 7-day risk (≥30%)</span></div>
   <div class="kpi"><b id="k-lat">–</b><span>Alert latency (vehicle → screen)</span></div>
+  <div class="kpi"><b id="k-fresh">–</b><span>Data freshness (vehicle → dashboard)</span></div>
 </section>
 <main>
   <div class="panel"><h2>Live fleet map <span id="maskNote"></span></h2><div id="map"></div></div>
@@ -128,13 +129,16 @@ function start() {
   }
   [refresh, loadAlerts, loadRisk, loadWOs, loadMap].forEach(f => safe(f)());
   connectWS();
-  setInterval(safe(refresh), 3000); setInterval(safe(loadRisk), 30000); setInterval(safe(loadMap), 5000);
+  setInterval(safe(refresh), 1000); setInterval(safe(loadRisk), 30000); setInterval(safe(loadMap), 2000);
 }
 async function refresh() {
+  const t0 = performance.now();
   const s = await api('/api/v1/stats');
   $('#k-veh').textContent = s.vehicles.toLocaleString(); $('#k-eps').textContent = s.events_per_sec.toLocaleString();
   $('#k-crit').textContent = s.critical_alerts.toLocaleString(); $('#k-open').textContent = s.open_alerts.toLocaleString();
   $('#k-risk').textContent = s.high_risk.toLocaleString();
+  // age of the newest live state when the API served it, plus how long this response took to arrive
+  if (s.data_age_ms != null) $('#k-fresh').textContent = `${((s.data_age_ms + (performance.now() - t0)) / 1000).toFixed(2)} s`;
 }
 async function loadMap() {
   const d = await api('/api/v1/live?limit=4000');

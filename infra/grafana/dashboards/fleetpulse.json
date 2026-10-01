@@ -1,0 +1,180 @@
+{
+ "uid": "fleetpulse-pipeline",
+ "title": "FleetPulse pipeline",
+ "schemaVersion": 39,
+ "refresh": "5s",
+ "time": {
+  "from": "now-15m",
+  "to": "now"
+ },
+ "panels": [
+  {
+   "id": 1,
+   "type": "timeseries",
+   "title": "Events processed / s by outcome",
+   "datasource": "Prometheus",
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ops"
+    },
+    "overrides": []
+   },
+   "targets": [
+    {
+     "expr": "sum by (outcome) (rate(fp_events_total[1m]))",
+     "legendFormat": "{{outcome}}",
+     "refId": "A"
+    }
+   ]
+  },
+  {
+   "id": 2,
+   "type": "timeseries",
+   "title": "Ingest latency (vehicle timestamp \u2192 processed)",
+   "datasource": "Prometheus",
+   "gridPos": {
+    "x": 12,
+    "y": 0,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    },
+    "overrides": []
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.5, sum by (le) (rate(fp_ingest_latency_seconds_bucket[1m])))",
+     "legendFormat": "p50",
+     "refId": "A"
+    },
+    {
+     "expr": "histogram_quantile(0.95, sum by (le) (rate(fp_ingest_latency_seconds_bucket[1m])))",
+     "legendFormat": "p95",
+     "refId": "B"
+    },
+    {
+     "expr": "histogram_quantile(0.99, sum by (le) (rate(fp_ingest_latency_seconds_bucket[1m])))",
+     "legendFormat": "p99",
+     "refId": "C"
+    }
+   ]
+  },
+  {
+   "id": 3,
+   "type": "timeseries",
+   "title": "Alerts raised / s by rule",
+   "datasource": "Prometheus",
+   "gridPos": {
+    "x": 0,
+    "y": 8,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ops"
+    },
+    "overrides": []
+   },
+   "targets": [
+    {
+     "expr": "sum by (rule) (rate(fp_alerts_total[1m]))",
+     "legendFormat": "{{rule}}",
+     "refId": "A"
+    }
+   ]
+  },
+  {
+   "id": 4,
+   "type": "timeseries",
+   "title": "Processor batch time",
+   "datasource": "Prometheus",
+   "gridPos": {
+    "x": 12,
+    "y": 8,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    },
+    "overrides": []
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.95, sum by (le) (rate(fp_batch_seconds_bucket[1m])))",
+     "legendFormat": "p95",
+     "refId": "A"
+    },
+    {
+     "expr": "sum(rate(fp_batch_seconds_sum[1m])) / sum(rate(fp_batch_seconds_count[1m]))",
+     "legendFormat": "mean",
+     "refId": "B"
+    }
+   ]
+  },
+  {
+   "id": 5,
+   "type": "timeseries",
+   "title": "API latency p95 by route",
+   "datasource": "Prometheus",
+   "gridPos": {
+    "x": 0,
+    "y": 16,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s"
+    },
+    "overrides": []
+   },
+   "targets": [
+    {
+     "expr": "histogram_quantile(0.95, sum by (le, route) (rate(fp_api_latency_seconds_bucket[1m])))",
+     "legendFormat": "{{route}}",
+     "refId": "A"
+    }
+   ]
+  },
+  {
+   "id": 6,
+   "type": "timeseries",
+   "title": "Kafka ingest rate (records produced / s)",
+   "datasource": "Prometheus",
+   "gridPos": {
+    "x": 12,
+    "y": 16,
+    "w": 12,
+    "h": 8
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ops"
+    },
+    "overrides": []
+   },
+   "targets": [
+    {
+     "expr": "sum(rate(redpanda_kafka_records_produced_total[1m]))",
+     "legendFormat": "produced",
+     "refId": "A"
+    }
+   ]
+  }
+ ],
+ "tags": [
+  "fleetpulse"
+ ]
+}
