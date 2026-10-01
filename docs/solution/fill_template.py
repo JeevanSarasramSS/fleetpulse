@@ -16,7 +16,7 @@ COVER = {
     "Team Members & Roles:": "Team Members & Roles: Jeevan Sarasram S S (Reg. No. RA2311056010035), solo developer: problem framing, architecture, backend, data engineering, ML, DevOps and testing; js9882@srmist.edu.in, jeevansiva2005@gmail.com",
     "Problem Space Chosen:": "Problem Space Chosen: Predictive maintenance for mixed ICE / hybrid / EV fleets (with real-time critical-fault alerting)",
     "Repository URL:": f"Repository URL: {REPO} (tag v1.0-submission)",
-    "Demo Video URL": "Demo Video URL (≤ 5 min): [Link]",
+    "Demo Video URL": "Demo Video URL (explainer, ≤ 10 min): [Link]",
     "Date of Submission:": "Date of Submission: 01/10/2026",
 }
 
@@ -25,7 +25,7 @@ A = {}
 A["1. Executive Summary"] = [
     ("b", "Problem. ", "Unplanned breakdowns are the most expensive event in a commercial fleet: a tow, an emergency repair and two days of a vehicle earning nothing. Fleet managers running mixed petrol, hybrid and EV fleets see fault codes and warning lights only after the fact, scattered across OEM portals with different formats."),
     ("b", "Solution. ", "FleetPulse streams telemetry from every vehicle, raises critical faults on the manager's screen within seconds, and every minute ranks the whole fleet by its probability of breaking down in the next 7 days, with the reasons and a dollar estimate. A fleet copilot answers questions over the same data and proposes work orders that a human approves."),
-    ("b", "Results (measured on the submitted code). ", "100,000 simulated vehicles across 3 tenants and 2 OEM payload formats; ~5,000 events/s sustained end to end with 3x bursts every two minutes on four processor replicas (CPU hot path 33.9K events/s per core); critical alert vehicle → screen p50 0.17 s and p95 2.6 s even through a 3x burst (target < 5 s); 100,000 vehicles scored in ~10 s; risk model ROC-AUC 0.878 vs 0.688 for the mileage-since-service baseline and 4.2x the baseline's precision on the top 2% of the fleet; API p95 71 ms at 10 concurrent users; slowest query 174 ms → 0.58 ms; recovery from killing both processors and restarting the broker with zero data loss."),
+    ("b", "Results (measured on the submitted code). ", "100,000 simulated vehicles across 3 tenants and 2 OEM payload formats; load-tested end to end at up to ~25,000 events/s with 3x bursts and zero data loss (every unique event written), ~5,000 events/s in the default demo (CPU hot path 33.9K events/s per core); data freshness vehicle → dashboard ~0.15 s; critical alert vehicle → screen p50 0.17 s and p95 2.6 s even through a 3x burst (target < 5 s); 100,000 vehicles scored in ~10 s; risk model ROC-AUC 0.878 vs 0.688 for the mileage-since-service baseline and 4.2x the baseline's precision on the top 2% of the fleet; API p95 110 ms at 50 concurrent users; slowest query 174 ms → 0.58 ms; recovery from killing the processors and restarting the broker in ~26 s with zero data loss; the production Kubernetes manifests deploy unchanged (config only) on a kind cluster in CI."),
     ("b", "What is distinctive. ", "Effectively-once processing without Kafka transactions (at-least-once + idempotent sinks); explainable per-vehicle risk factors; a copilot with propose-only tools, tenant-scoped data access, injection screening, VIN grounding checks and an append-only audit trail; and honest gap reporting (section 12)."),
 ]
 A["2.1 Problem Statement"] = [
@@ -66,7 +66,7 @@ A["5.1 Architecture Overview"] = [
 ]
 A["5.4 Deployment View"] = [
     "Kubernetes namespace fleetpulse (pod-security restricted): api Deployment (3 replicas, HPA 3–20 on CPU, PDB minAvailable 2, zone topology spread), processor Deployment (6 replicas ≤ partitions; KEDA on consumer lag in production), risk-scoring CronJob every 5 minutes, default-deny NetworkPolicy, TLS Ingress via cert-manager. Containers run as non-root with read-only root filesystems and dropped capabilities. Secrets come from a K8s Secret synced from Vault / cloud secret manager (infra/k8s/fleetpulse.yaml).",
-    "Cloud-agnostic approach: the application only reads KAFKA_BOOTSTRAP, PG_DSN, REDIS_URL and JWT_SECRET from the environment (12-factor). Terraform for AWS (infra/terraform/aws: VPC, EKS, MSK, RDS Multi-AZ, ElastiCache, all encrypted) provisions the backing services; the same manifests run on GKE/AKS with Confluent/Event Hubs, Cloud SQL/Flexible Server and Memorystore/Azure Cache, or locally on kind/k3d and docker compose, with no code change.",
+    "Portability proof: a CI job deploys these exact manifests on a kind Kubernetes cluster through a kustomize overlay that changes configuration only (image, Secret, replica counts; Ingress omitted), under the restricted Pod Security profile, then smoke-tests login and live streaming through the Service. Cloud-agnostic approach: the application only reads KAFKA_BOOTSTRAP, PG_DSN, REDIS_URL and JWT_SECRET from the environment (12-factor). Terraform for AWS (infra/terraform/aws: VPC, EKS, MSK, RDS Multi-AZ, ElastiCache, all encrypted) provisions the backing services; the same manifests run on GKE/AKS with Confluent/Event Hubs, Cloud SQL/Flexible Server and Memorystore/Azure Cache, or locally on kind/k3d and docker compose, with no code change.",
 ]
 A["6.4 Interfaces, Contracts & Runtime Flows"] = [
     ("b", "API contract: ", "OpenAPI 3 generated by FastAPI at /openapi.json (Swagger UI at /docs). Versioned under /api/v1. Keyset (cursor) pagination with opaque base64 cursors on vehicles and alerts. Errors are RFC 7807 application/problem+json. Rate limit 600 requests/min per user, HTTP 429 with Retry-After. WebSocket /ws/alerts?token=… streams tenant-scoped alerts."),
@@ -91,7 +91,7 @@ A["6.5 Algorithms & Data Structures"] = [
     "Measured: hot path (parse → normalise → VIN → Bloom → rules) 200,000 events in 5.90 s = 33.9K events/s on one core (tests/load/processor_bench.py).",
 ]
 A["7. Non-Functional Requirements & Performance Benchmarks"] = [
-    "Load test setup: everything on one 4-vCPU cloud VM under docker compose (Redpanda, Postgres 16, Redis, 2 processors, simulator, batch, API) with 100K vehicles at a 5,000 events/s base rate and 3x bursts for 10 s every 2 minutes. API load: tests/load/api_load.py (async httpx) against 4 uvicorn workers, rate limiter raised for the test. Processor CPU benchmark: tests/load/processor_bench.py. Alert latency was re-measured after hardening on a 16-vCPU laptop with 4 processor replicas (docs/evidence/alert_latency.txt). Raw outputs in docs/evidence/.",
+    "Original load test setup: everything on one 4-vCPU cloud VM under docker compose (Redpanda, Postgres 16, Redis, 2 processors, simulator, batch, API) with 100K vehicles at a 5,000 events/s base rate and 3x bursts for 10 s every 2 minutes. API load: tests/load/api_load.py (async httpx) against 4 uvicorn workers, rate limiter raised for the test. Processor CPU benchmark: tests/load/processor_bench.py. After hardening, everything was re-measured on a 16-vCPU laptop: alert latency with 4 processor replicas (docs/evidence/alert_latency.txt); end-to-end throughput with tests/load/pipeline_load.py (parallel producers, 3x bursts, zero-loss check); API latency with a multi-process client inside the compose network (api_load.txt); and a 45-minute soak (soak.txt). Raw outputs in docs/evidence/.",
     "Results: API 2,000 requests at 10 concurrent: 326 rps, p50 25 ms, p95 71 ms, p99 110 ms (all 200). At 50 concurrent on the same shared box: p95 456 ms, p99 576 ms: the CPU is shared with the pipeline, and the fix is horizontal (API HPA, read replicas). Processor ~2.5K events/s per replica including Postgres writes; consumer lag drained after chaos at ~9K events/s.",
 ]
 A["8. Security & Compliance"] = [
@@ -109,7 +109,7 @@ A["8. Security & Compliance"] = [
     ("b", "AI safety: ", "see section 11."),
 ]
 A["10. Observability"] = [
-    "Every service exposes Prometheus metrics: fp_events_total{outcome=ok|late|duplicate|dlq}, fp_ingest_latency_seconds (vehicle timestamp → processed), fp_alerts_total{rule}, fp_batch_seconds, fp_api_latency_seconds{route}. docker compose --profile observability starts Prometheus and Grafana. Consumer lag comes from rpk group describe / the Kafka exporter. Logs are structured stdout collected by the platform (Loki/ELK). The dashboard itself shows live events/s and measured alert latency.",
+    "Every service exposes Prometheus metrics: fp_events_total{outcome=ok|late|duplicate|dlq}, fp_ingest_latency_seconds (vehicle timestamp → processed), fp_alerts_total{rule}, fp_batch_seconds, fp_api_latency_seconds{route}. docker compose --profile observability starts Prometheus and Grafana with a provisioned “FleetPulse pipeline” dashboard (events/s by outcome, ingest latency p50/p95/p99, alerts by rule, batch time, API p95 by route, Kafka ingest rate). Consumer lag comes from rpk group describe / the Kafka exporter. Logs are structured stdout collected by the platform (Loki/ELK). The dashboard itself shows live events/s and measured alert latency.",
     "Troubleshooting a latency spike: (1) Grafana: is fp_api_latency p95 up for one route or all? (2) If all, check pod CPU and the Postgres connection pool; if one route, run EXPLAIN ANALYZE on its query (as in 5.3). (3) For alert latency, compare fp_ingest_latency with consumer lag: rising lag means processors are saturated, so scale replicas up to the partition count; flat lag but slow batches (fp_batch_seconds) points to Postgres writes. (4) Correlate with simulator burst logs. OpenTelemetry tracing across services is the next step.",
 ]
 A["11. AI / ML Component (if used)"] = [
@@ -122,7 +122,7 @@ A["11. AI / ML Component (if used)"] = [
 ]
 A["12. Architecture Decisions, Risks & Future Enhancements"] = [
     ("b", "ADRs (docs/adr): ", "0001 Kafka as telemetry backbone (replay, per-VIN ordering, DLQ); 0002 polyglot persistence (Postgres 3NF + day-partitioned telemetry + pgvector, Redis for hot state); 0003 CAP/PACELC per data class and effectively-once delivery; 0004 single Python image with batch hot path and a deterministic-first copilot."),
-    ("b", "Risks and shortcuts: ", "100K events/s not proven end to end (measured 5K/s on 4 vCPUs; ~34K/s per core CPU path implies 4–6 processor replicas plus a telemetry store beyond a single Postgres primary). mTLS, OIDC and Vault are designed, not running. The model is validated on simulated data only. Terraform is unapplied. Bloom state is per process and lost on restart (DB constraints keep correctness)."),
+    ("b", "Risks and shortcuts: ", "100K events/s not proven end to end: on one laptop the pipeline sustains ~24K events/s with zero loss and Kafka absorbs 69K/s, with a single Postgres primary as the ceiling; 100K/s needs the telemetry store beyond one Postgres primary (ADR-0002). mTLS, OIDC and Vault are designed, not running. The model is validated on simulated data only. Terraform is unapplied. Bloom state is per process and lost on restart (DB constraints keep correctness)."),
     ("b", "Next three steps to pilot: ", "(1) move raw telemetry to ClickHouse or Scylla with Parquet cold storage and run a 100K events/s k6/Kafka load test on EKS; (2) Avro + schema registry and mTLS device identity; (3) retrain on a real pilot fleet's maintenance history and add survival-analysis time-to-failure."),
 ]
 A["15. Conclusion"] = [
@@ -136,7 +136,7 @@ A["16. Declarations"] = [
     ("b", "Data: ", "all vehicles, VINs, drivers, positions and fault histories are synthetic and generated by our simulator; no real personal or vehicle-owner data is used."),
 ]
 A["17. Appendix (if any)"] = [
-    "Evidence files in the repository: docs/evidence/api_load.txt, processor_bench.txt, explain_analyze.txt, chaos.txt, dashboard.png, vehicle_drawer.png; fleetpulse/ml/metrics.json; docs/threat-model.md; docs/adr/*.md; docs/demo-script.md.",
+    "Evidence files in the repository: docs/evidence/api_load.txt, processor_bench.txt, alert_latency.txt, soak.txt, grafana.png, explain_analyze.txt, chaos.txt, dashboard.png, vehicle_drawer.png; fleetpulse/ml/metrics.json; docs/threat-model.md; docs/adr/*.md; docs/demo-script.md.",
     ("img", "docs/diagrams/er.png", 6.5),
     "References: Connected Vehicle Intelligence Hackathon problem statement (Talenciaglobal, 2026); SAE J2012 (DTC definitions); ISO 3779 / NHTSA 49 CFR 565 (VIN check digit); Kafka documentation (idempotent producer, consumer groups); PostgreSQL 16 declarative partitioning; pgvector HNSW.",
 ]
@@ -184,33 +184,38 @@ TABLES = {
         ["Graceful degradation", "Rate limiter fails open; map falls back from Esri to OpenStreetMap tiles and works without any tile CDN; pollers survive API restarts; copilot falls back from LLM", "api/deps.py, web/index.html, agent/copilot.py"],
     ],
     "NFR": [
-        ["Ingest Throughput", "100K+ events/sec", "~5K/s sustained on 4 vCPUs (2 replicas); 33.9K/s per core CPU path", "Simulator + processor logs; processor_bench.py"],
-        ["End-to-End Latency", "< 2 s dashboard; < 5 s critical alert", "Critical alert p50 0.17 s, p95 2.6 s, max 3.2 s through a 3x burst; dashboard KPIs refresh every 3 s", "WebSocket push timestamp minus vehicle timestamp"],
-        ["API Latency", "p95 < 200 ms; p99 < 500 ms", "p95 71 ms, p99 110 ms @10 conc.; p95 456 ms @50 conc. on shared box", "tests/load/api_load.py"],
-        ["Resilience", "Recovers after broker / pod failure", "Recovered: processors killed + broker restarted, backlog drained at ~9K/s, no duplicates", "docs/evidence/chaos.txt"],
+        ["Ingest Throughput", "100K+ events/sec; 3x burst for 5 min without loss", "Zero loss at 12.8K/s and 25.7K/s offered with 3x bursts (rows written = unique events sent); Kafka accepted 69K/s, processing ceiling ~24K/s on one laptop Postgres (scale-out path in ADR-0002); 33.9K/s per core CPU path", "tests/load/pipeline_load.py; docs/evidence/processor_bench.txt"],
+        ["End-to-End Latency", "< 2 s dashboard; < 5 s critical alert", "Data freshness vehicle → dashboard p50 ~0.15 s (KPIs poll every 1 s); critical alert p50 0.17 s, p95 2.6 s, max 3.2 s through a 3x burst", "WebSocket push timestamp minus vehicle timestamp"],
+        ["API Latency", "p95 < 200 ms; p99 < 500 ms", "p95 18 ms @10, p95 110 ms / p99 132 ms @50, p95 224 ms @100 concurrent users, with the pipeline running on the same box", "tests/load/api_load.py"],
+        ["Resilience", "Recovers after broker / pod failure", "Processors killed + broker restarted: flow resumes ~26 s after the restart (10 s consumer session timeout), zero loss, no duplicates; proven in CI on every push", "docs/evidence/chaos.txt"],
         ["Availability", "99.9%, no single point of failure", "Design: 3 API replicas + PDB, RF=3 brokers, Multi-AZ RDS, Redis failover; not measured", "infra/k8s, infra/terraform"],
     ],
     "Test Type": [
-        ["Unit", "pytest, pytest-cov", "50", "99% line coverage on core, rules, guardrails, features", "Yes"],
+        ["Unit", "pytest, pytest-cov", "50", "98% line coverage on all domain modules (algorithms, rules, guardrails, features, fleet generator); I/O entrypoints covered by the live-stack suites", "Yes (80% gate)"],
         ["Integration & Contract", "pytest + httpx against docker compose; consumer-driven contracts (dashboard as consumer) verified against the live API and its OpenAPI", "8 + 10", "auth, tenant isolation, RBAC, masking, pagination, erasure, guardrail, response contracts: all pass", "Yes (e2e job)"],
         ["Acceptance (BDD)", "pytest-bdd Gherkin features (tests/acceptance/features)", "6 scenarios", "risk list, alert ack + audit, copilot work order + human approval, analyst masking, tenant isolation, erasure: all pass", "Yes (e2e job)"],
-        ["Performance / Load / Soak", "api_load.py, processor_bench.py, 15+ min continuous run", "3", "p95 71 ms @10; 33.9K ev/s/core; ~5.4M events over the soak", "Partial"],
+        ["Performance / Load / Soak", "pipeline_load.py (zero-loss check, parallel producers, 3x bursts), api_load.py (multi-process client), soak.py (45 min), processor_bench.py", "4", "Zero loss at 25.7K ev/s offered; API p95 110 ms @50; soak 15.8M events, freshness p50 0.19 s, burst backlog grows after ~25 min (p95 7.9 s) as the hourly partition outgrows cache", "Manual (needs a 16-vCPU host)"],
         ["Security (SAST, DAST, Dependency, Image)", "Semgrep, Bandit, pip-audit, Trivy, OWASP ZAP baseline", "5", "Bandit clean (0 medium/high); ZAP and Trivy reports in the CI run", "Yes"],
-        ["Compliance & Chaos", "erasure + audit test; kill processors + restart broker", "2", "Audit row on erase; recovery with no data loss", "Yes"],
+        ["Compliance & Chaos", "erasure + audit test; kill processors + restart broker", "2", "Audit row on erase; flow resumes ~26 s after a broker restart, no data loss", "Yes"],
     ],
     "Time": None,
 }
-DEMO = [["0:00 – 0:30", "Problem", "Stranded van, US$2,400 per breakdown, 2,800 breakdowns/week at 100K vehicles"],
-        ["0:30 – 1:00", "Solution", "“FleetPulse tells you who breaks down this week, why, and what it saves”"],
-        ["1:00 – 3:00", "Live Demo", "Login, live KPIs, critical alert arriving, open vehicle (73% risk + reasons), copilot questions, propose and approve work order, analyst login shows masked map"],
-        ["3:00 – 4:15", "Under the Hood", "Architecture slide, docker compose ps, kill processors and broker live, lag drains; query plans; model vs baseline"],
-        ["4:15 – 5:00", "Impact & Next Steps", "US$63K/week net for one tenant, 4.2x precision, honest gaps, roadmap, team"]]
+DEMO = [["0:00 – 0:45", "Problem", "US$2,400 per breakdown, ~2,800 breakdowns a week at 100K vehicles, mixed ICE/EV fleets, one format per OEM"],
+        ["0:45 – 1:45", "Architecture", "Simulator → Kafka → processors (normalise, VIN check, Bloom dedup, rules) → Postgres/Redis/pgvector; batch rollup + ML; FastAPI"],
+        ["1:45 – 2:45", "Live dashboard", "Manager login; live KPIs incl. alert latency (~0.2 s) and data freshness (~0.15 s); map of 8 depots; alerts over WebSocket"],
+        ["2:45 – 3:45", "Predicting breakdowns", "Top-risk vehicle: risk %, reasons, trends, alerts; model 0.88 vs 0.69 ROC-AUC, 4.2x precision; propose work order"],
+        ["3:45 – 4:45", "AI copilot", "Tenant-scoped tool calls, savings estimate, prompt injection refused, human approval, audit log"],
+        ["4:45 – 5:20", "Privacy", "Analyst masked map and no actions; cross-tenant VIN returns 404; audited erasure (GDPR/DPDP)"],
+        ["5:20 – 6:00", "Observability", "Grafana: events by outcome, ingest latency percentiles, alerts by rule, batch time, API p95, Kafka rate"],
+        ["6:00 – 7:00", "Resilience (live)", "Kill all processors + restart the broker; flow resumes in ~30 s, zero loss, no duplicates"],
+        ["7:00 – 8:45", "Evidence", "Green CI (unit 98%, integration, contract, BDD, ZAP, Trivy, chaos, K8s on kind); 25K/s zero-loss load test; API p95 110 ms @50; 45-min soak; 174 → 0.58 ms query"],
+        ["8:45 – 9:30", "Impact & next steps", "Tens of thousands of US$ saved per week per fleet; ClickHouse for 100K/s, OIDC + mTLS, real-fleet retraining"]]
 STACK = [["Ingestion / Messaging", "Kafka protocol (Redpanda locally, MSK/Confluent in cloud), key = VIN", "Replay, partitioned per-vehicle ordering, consumer groups; RabbitMQ rejected (no replay, lower throughput)"],
          ["Stream / Batch Processing", "Python consumer with batch upserts; batch scorer + incremental rollup", "Simple, testable and measured at 34K ev/s/core; Flink/Spark rejected as too heavy for the time box (next step at scale)"],
          ["Relational / NoSQL / Cache / Search / Vector", "PostgreSQL 16 (3NF + partitions) · Redis 7 · pgvector HNSW", "ACID core and analytics in one engine; Redis for sub-ms live state/geo; pgvector avoids another system. ClickHouse/Scylla deferred (ADR-0002)"],
          ["Backend / Frontend", "FastAPI (async, OpenAPI) · single-page HTML/JS + Leaflet", "Fast to build, typed contracts; no front-end build step; React rejected for time"],
          ["ML / AI", "scikit-learn HistGradientBoosting · Claude tool-use (optional)", "Strong tabular baseline with explanations; LLM only plans tool calls, never owns facts"],
-         ["Infrastructure / CI-CD / Observability", "Docker compose, Kubernetes manifests, Terraform (AWS), GitHub Actions, Prometheus + Grafana", "Portable across clouds by configuration; CI runs lint, unit tests with coverage gate, SAST, e2e (integration, contract, BDD), ZAP DAST, image scan and chaos"]]
+         ["Infrastructure / CI-CD / Observability", "Docker compose, Kubernetes manifests, Terraform (AWS), GitHub Actions, Prometheus + Grafana", "Portable across clouds by configuration (proven on kind in CI); CI runs lint, unit tests with coverage gate, SAST, e2e (integration, contract, BDD), ZAP DAST, image scan and chaos"]]
 LAYERS = [["Presentation / API", "fleetpulse/api: HTTP, WebSocket, validation (Pydantic), auth, RBAC, DTO mapping", "Contain business rules"],
           ["Application / Service", "processor/run.py, ml/score.py, agent/copilot.py: use cases, transactions, orchestration", "Depend on a specific OEM format"],
           ["Domain", "fleetpulse/core + processor/rules.py: canonical event, VIN/DTC rules, algorithms, alert rules (pure Python, no I/O)", "Import framework or infrastructure code"],

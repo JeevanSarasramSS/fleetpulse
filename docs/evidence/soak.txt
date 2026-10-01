@@ -1,0 +1,102 @@
+﻿Soak test, 2026-10-01/02 (tests/load/soak.py 45), demo stack on a 16-vCPU laptop: 5,000 events/s base with 3x
+(15,000/s) bursts for 10 s every 2 minutes, 4 processor replicas, fresh database, sampled every ~35 s.
+
+Findings
+- Throughput held for 45 min: 15.8M events processed, 5,823/s average, no crashes or restarts, zero errors.
+- Freshness p50 192 ms all the way through (target < 2 s). For the first ~24 min bursts were absorbed within one sample
+  (freshness < 0.75 s). After that the current hour's telemetry partition grows past the Postgres cache
+  (shared_buffers 512 MB, two vin-leading indexes), bursts back up for 30-60 s, and freshness spikes to 3-10 s
+  (p95 7.9 s) before recovering. The next hourly partition starts small again.
+- Processor memory 575 -> 672 MB average (first vs second half): Bloom filter and reorder buffer are bounded; the
+  rest is allocator growth. API memory flat (~320 MB).
+- Database grew 420 MB -> 3.9 GB: 45 min is shorter than the 2 h raw retention window, so no partition was due to
+  be dropped yet. Retention dropping old partitions is covered by the batch logs ("retention: dropped N partitions").
+Next steps: merge the two telemetry indexes into one unique (vin, ts, seq) index, raise shared_buffers, and
+ultimately move raw telemetry to a columnar store (ADR-0002).
+
+Samples
+  0.0 min  eps= 5000  freshness=100 ms  lag=758  db=420 MB  mem processors=413 MB api=205 MB postgres=574 MB
+  0.6 min  eps= 9902  freshness=156 ms  lag=763  db=496 MB  mem processors=456 MB api=205 MB postgres=653 MB
+  1.2 min  eps= 5099  freshness=250 ms  lag=377  db=539 MB  mem processors=459 MB api=231 MB postgres=673 MB
+  1.7 min  eps= 4970  freshness=212 ms  lag=1005  db=573 MB  mem processors=474 MB api=232 MB postgres=675 MB
+  2.3 min  eps= 5044  freshness=186 ms  lag=1003  db=617 MB  mem processors=504 MB api=280 MB postgres=707 MB
+  2.9 min  eps= 5052  freshness=172 ms  lag=376  db=682 MB  mem processors=518 MB api=248 MB postgres=710 MB
+  3.4 min  eps= 5054  freshness=156 ms  lag=711  db=717 MB  mem processors=530 MB api=269 MB postgres=779 MB
+  4.0 min  eps= 5025  freshness=128 ms  lag=885  db=757 MB  mem processors=532 MB api=272 MB postgres=781 MB
+  4.6 min  eps= 6969  freshness=165 ms  lag=501  db=821 MB  mem processors=553 MB api=269 MB postgres=788 MB
+  5.1 min  eps= 5098  freshness=136 ms  lag=505  db=860 MB  mem processors=553 MB api=269 MB postgres=789 MB
+  5.7 min  eps= 5047  freshness=126 ms  lag=551  db=905 MB  mem processors=553 MB api=267 MB postgres=790 MB
+  6.3 min  eps= 4999  freshness=114 ms  lag=500  db=942 MB  mem processors=553 MB api=267 MB postgres=792 MB
+  6.8 min  eps= 5001  freshness=208 ms  lag=1007  db=1005 MB  mem processors=555 MB api=268 MB postgres=795 MB
+  7.4 min  eps= 5001  freshness=157 ms  lag=630  db=1040 MB  mem processors=555 MB api=268 MB postgres=797 MB
+  8.0 min  eps= 5000  freshness=214 ms  lag=501  db=1087 MB  mem processors=555 MB api=269 MB postgres=799 MB
+  8.5 min  eps=15437  freshness=190 ms  lag=621  db=1151 MB  mem processors=593 MB api=270 MB postgres=802 MB
+  9.1 min  eps= 5000  freshness=174 ms  lag=645  db=1193 MB  mem processors=593 MB api=270 MB postgres=867 MB
+  9.7 min  eps= 4926  freshness=190 ms  lag=509  db=1233 MB  mem processors=593 MB api=271 MB postgres=868 MB
+ 10.2 min  eps= 4881  freshness=124 ms  lag=1011  db=1262 MB  mem processors=593 MB api=270 MB postgres=942 MB
+ 10.8 min  eps= 4974  freshness=78 ms  lag=621  db=1344 MB  mem processors=600 MB api=273 MB postgres=948 MB
+ 11.4 min  eps= 4947  freshness=154 ms  lag=504  db=1362 MB  mem processors=600 MB api=273 MB postgres=1006 MB
+ 11.9 min  eps= 4900  freshness=89 ms  lag=747  db=1386 MB  mem processors=600 MB api=273 MB postgres=1007 MB
+ 12.5 min  eps=16228  freshness=732 ms  lag=12003  db=1495 MB  mem processors=604 MB api=282 MB postgres=1043 MB
+ 13.1 min  eps= 4850  freshness=142 ms  lag=630  db=1516 MB  mem processors=604 MB api=296 MB postgres=1174 MB
+ 13.6 min  eps= 4924  freshness=152 ms  lag=1020  db=1547 MB  mem processors=604 MB api=293 MB postgres=1266 MB
+ 14.2 min  eps= 5078  freshness=161 ms  lag=1011  db=1606 MB  mem processors=604 MB api=293 MB postgres=1410 MB
+ 14.8 min  eps= 4818  freshness=195 ms  lag=503  db=1672 MB  mem processors=615 MB api=297 MB postgres=1542 MB
+ 15.4 min  eps= 4917  freshness=259 ms  lag=631  db=1712 MB  mem processors=615 MB api=297 MB postgres=1607 MB
+ 15.9 min  eps= 4968  freshness=135 ms  lag=499  db=1738 MB  mem processors=615 MB api=298 MB postgres=1678 MB
+ 16.5 min  eps=14218  freshness=712 ms  lag=12260  db=1792 MB  mem processors=618 MB api=298 MB postgres=1744 MB
+ 17.1 min  eps= 5151  freshness=84 ms  lag=765  db=1835 MB  mem processors=618 MB api=298 MB postgres=1802 MB
+ 17.6 min  eps= 5086  freshness=349 ms  lag=498  db=1871 MB  mem processors=618 MB api=297 MB postgres=1858 MB
+ 18.2 min  eps= 5199  freshness=129 ms  lag=504  db=1946 MB  mem processors=618 MB api=298 MB postgres=1885 MB
+ 18.8 min  eps= 5001  freshness=165 ms  lag=505  db=1987 MB  mem processors=624 MB api=295 MB postgres=1954 MB
+ 19.4 min  eps= 5082  freshness=163 ms  lag=616  db=2013 MB  mem processors=624 MB api=305 MB postgres=2005 MB
+ 19.9 min  eps= 5083  freshness=194 ms  lag=616  db=2083 MB  mem processors=624 MB api=294 MB postgres=2045 MB
+ 20.5 min  eps=11881  freshness=2294 ms  lag=25204  db=2117 MB  mem processors=627 MB api=297 MB postgres=2088 MB
+ 21.1 min  eps= 4979  freshness=148 ms  lag=750  db=2220 MB  mem processors=627 MB api=297 MB postgres=2156 MB
+ 21.7 min  eps= 4899  freshness=95 ms  lag=757  db=2238 MB  mem processors=627 MB api=297 MB postgres=2214 MB
+ 22.2 min  eps= 5174  freshness=220 ms  lag=512  db=2256 MB  mem processors=627 MB api=297 MB postgres=2233 MB
+ 22.8 min  eps= 4726  freshness=230 ms  lag=519  db=2328 MB  mem processors=629 MB api=296 MB postgres=2247 MB
+ 23.4 min  eps= 4998  freshness=227 ms  lag=506  db=2394 MB  mem processors=629 MB api=296 MB postgres=2345 MB
+ 23.9 min  eps= 5335  freshness=111 ms  lag=1012  db=2421 MB  mem processors=629 MB api=296 MB postgres=2393 MB
+ 24.5 min  eps= 9108  freshness=5323 ms  lag=69992  db=2452 MB  mem processors=651 MB api=308 MB postgres=2405 MB
+ 25.1 min  eps= 4999  freshness=119 ms  lag=661  db=2477 MB  mem processors=628 MB api=317 MB postgres=2417 MB
+ 25.7 min  eps= 4999  freshness=183 ms  lag=1273  db=2582 MB  mem processors=628 MB api=317 MB postgres=2487 MB
+ 26.2 min  eps= 4925  freshness=293 ms  lag=645  db=2606 MB  mem processors=628 MB api=316 MB postgres=2561 MB
+ 26.8 min  eps= 7130  freshness=3833 ms  lag=20120  db=2674 MB  mem processors=642 MB api=316 MB postgres=2604 MB
+ 27.4 min  eps= 5027  freshness=172 ms  lag=1186  db=2724 MB  mem processors=638 MB api=317 MB postgres=2649 MB
+ 28.0 min  eps= 5047  freshness=215 ms  lag=869  db=2747 MB  mem processors=638 MB api=318 MB postgres=2694 MB
+ 28.5 min  eps= 3961  freshness=7905 ms  lag=109792  db=2793 MB  mem processors=679 MB api=318 MB postgres=2727 MB
+ 29.1 min  eps= 4201  freshness=1155 ms  lag=651  db=2863 MB  mem processors=678 MB api=318 MB postgres=2780 MB
+ 29.7 min  eps= 5073  freshness=274 ms  lag=2682  db=2992 MB  mem processors=678 MB api=317 MB postgres=2830 MB
+ 30.3 min  eps= 5075  freshness=178 ms  lag=507  db=3011 MB  mem processors=678 MB api=317 MB postgres=2939 MB
+ 30.9 min  eps= 5001  freshness=121 ms  lag=880  db=3080 MB  mem processors=680 MB api=319 MB postgres=2968 MB
+ 31.4 min  eps= 4899  freshness=182 ms  lag=4759  db=3114 MB  mem processors=680 MB api=319 MB postgres=3005 MB
+ 32.0 min  eps= 3304  freshness=2144 ms  lag=1910  db=3142 MB  mem processors=681 MB api=314 MB postgres=3075 MB
+ 32.6 min  eps= 9110  freshness=5917 ms  lag=42993  db=3171 MB  mem processors=683 MB api=313 MB postgres=3088 MB
+ 33.2 min  eps= 4952  freshness=89 ms  lag=619  db=3207 MB  mem processors=683 MB api=313 MB postgres=3151 MB
+ 33.7 min  eps= 4975  freshness=147 ms  lag=2405  db=3225 MB  mem processors=683 MB api=314 MB postgres=3125 MB
+ 34.3 min  eps= 5505  freshness=264 ms  lag=3154  db=3324 MB  mem processors=684 MB api=314 MB postgres=3169 MB
+ 34.9 min  eps= 6728  freshness=3821 ms  lag=14938  db=3352 MB  mem processors=686 MB api=314 MB postgres=3251 MB
+ 35.5 min  eps= 5328  freshness=274 ms  lag=516  db=3370 MB  mem processors=686 MB api=319 MB postgres=3252 MB
+ 36.0 min  eps= 5042  freshness=192 ms  lag=373  db=3430 MB  mem processors=686 MB api=319 MB postgres=3286 MB
+ 36.6 min  eps= 5146  freshness=8202 ms  lag=59359  db=3461 MB  mem processors=688 MB api=315 MB postgres=3333 MB
+ 37.2 min  eps= 5020  freshness=304 ms  lag=618  db=3485 MB  mem processors=688 MB api=314 MB postgres=3361 MB
+ 37.8 min  eps= 4153  freshness=986 ms  lag=2610  db=3503 MB  mem processors=688 MB api=316 MB postgres=3362 MB
+ 38.3 min  eps= 3563  freshness=1559 ms  lag=15940  db=3520 MB  mem processors=689 MB api=316 MB postgres=3382 MB
+ 38.9 min  eps= 7524  freshness=6867 ms  lag=36617  db=3545 MB  mem processors=687 MB api=316 MB postgres=3387 MB
+ 39.5 min  eps= 5944  freshness=224 ms  lag=6523  db=3589 MB  mem processors=687 MB api=319 MB postgres=3408 MB
+ 40.1 min  eps= 4924  freshness=133 ms  lag=1966  db=3607 MB  mem processors=688 MB api=319 MB postgres=3458 MB
+ 40.7 min  eps= 6340  freshness=10663 ms  lag=87126  db=3696 MB  mem processors=695 MB api=319 MB postgres=3482 MB
+ 41.2 min  eps= 6337  freshness=7032 ms  lag=28863  db=3721 MB  mem processors=692 MB api=319 MB postgres=3553 MB
+ 41.8 min  eps= 5276  freshness=178 ms  lag=1017  db=3766 MB  mem processors=692 MB api=320 MB postgres=3555 MB
+ 42.4 min  eps= 6376  freshness=729 ms  lag=39486  db=3806 MB  mem processors=693 MB api=320 MB postgres=3621 MB
+ 42.9 min  eps= 5542  freshness=8170 ms  lag=41824  db=3832 MB  mem processors=693 MB api=320 MB postgres=3652 MB
+ 43.5 min  eps= 4320  freshness=2952 ms  lag=2731  db=3868 MB  mem processors=694 MB api=320 MB postgres=3658 MB
+ 44.1 min  eps= 3975  freshness=377 ms  lag=1242  db=3889 MB  mem processors=694 MB api=320 MB postgres=3670 MB
+ 44.7 min  eps= 4349  freshness=10555 ms  lag=77968  db=3909 MB  mem processors=696 MB api=321 MB postgres=3693 MB
+
+SOAK 45 min: 15,806,354 events processed (5,823/s average)
+freshness p50=192 ms  p95=7905 ms  max=10663 ms
+consumer lag median=765  max=109792
+processor memory first half avg=575 MB, second half avg=672 MB
+database size 420 MB -> 3909 MB (raw telemetry retention keeps it bounded)

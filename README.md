@@ -14,7 +14,7 @@ Built for the Connected Vehicle Intelligence Hackathon (Motorq used as industry 
 cp .env.example .env            # optional overrides
 docker compose up --build       # seeds 100K vehicles, starts simulator -> Kafka -> processor -> Postgres/Redis -> API
 open http://localhost:8000      # manager@aurora.demo / demo1234  (analyst@aurora.demo sees masked locations)
-docker compose --profile observability up -d prometheus grafana   # metrics at :9090, dashboards at :3000
+docker compose --profile observability up -d prometheus grafana   # metrics at :9090, "FleetPulse pipeline" dashboard at :3000
 ```
 
 Optional: set `ANTHROPIC_API_KEY` to let Claude plan the copilot's tool calls (it falls back to a deterministic planner).
@@ -50,13 +50,16 @@ See [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) for the project history, status and
 | What | Result |
 |---|---|
 | Fleet seeded | 100,000 vehicles, 33,333 drivers, 3 tenants in 3.4 s (COPY) |
-| Stream processing | ~5,000 ev/s sustained plus 3x (15,000 ev/s) bursts every 2 min with 4 processor replicas; hot path 33.9K ev/s per core (no I/O) |
+| End-to-end throughput | zero loss at 12.8K and 25.7K ev/s offered with 3x bursts (`tests/load/pipeline_load.py`); Kafka absorbs 69K ev/s, processing ceiling ~24K ev/s on one laptop Postgres; demo default 5K ev/s |
+| Data freshness | vehicle → dashboard p50 ~0.15 s (target < 2 s), live KPI on the dashboard |
 | Critical alert latency | vehicle → screen p50 0.17 s, p95 2.6 s, max 3.2 s across a 3x burst (target < 5 s) |
 | Batch scoring | 100,000 vehicles scored in ~10 s, flat as history grows (incremental rollup) |
 | ML vs baseline | ROC-AUC 0.878 vs 0.688; precision@top-2% 27.8% vs 6.6% (4.2x) |
-| API (4 workers, sharing the box with the pipeline) | p95 71 ms / p99 110 ms at 10 concurrent; p95 456 ms at 50 concurrent |
+| API (4 workers, pipeline running on the same box) | p95 110 ms / p99 132 ms at 50 concurrent users; p95 224 ms at 100 |
 | Query tuning | vehicle telemetry 174 ms → 0.58 ms; top-risk 27 ms → 0.40 ms; open alerts 2.7 ms → 0.15 ms |
-| Tests | 50 unit (99% coverage on core) + 8 integration + 10 contract + 6 BDD scenarios against the live stack |
+| Tests | 50 unit (98% on all domain modules) + 8 integration + 10 contract + 6 BDD scenarios against the live stack; chaos recovery ~26 s |
+| Portability | production K8s manifests deployed unchanged (config-only overlay) on kind in CI |
+| Soak (45 min) | 15.8M events, no restarts, freshness p50 0.19 s; bursts slow to 3-10 s once the hourly partition outgrows cache (~25 min in), see `docs/evidence/soak.txt` |
 
 ## Repository layout
 
@@ -80,7 +83,10 @@ docs/                  ADRs, threat model, solution document, evidence, demo scr
 pip install -r requirements.txt pytest pytest-cov pytest-bdd httpx
 pytest --cov                                              # unit + coverage
 pytest -m integration tests/integration tests/contract tests/acceptance -o addopts=""   # against docker compose
-python tests/load/api_load.py http://localhost:8000 3000 10
+docker compose -f docker-compose.yml -f tests/load/compose.loadtest.yml up -d api   # lift the rate limit
+python tests/load/api_load.py http://localhost:8000 8000 50 4       # (best run inside the compose network)
+python tests/load/pipeline_load.py --rate 25000 --duration 120 --processors 12   # zero-loss throughput test
+python tests/load/soak.py 45                                        # soak: throughput, freshness, lag, memory
 PYTHONPATH=. python tests/load/processor_bench.py
 ```
 
@@ -92,8 +98,8 @@ At the default 5,000 events/s raw telemetry is about 5 GB per hour in Postgres. 
 
 ## Known gaps (honest)
 
-- 100K events/s was not load-tested end to end; measured per-core throughput implies ~3-4 processor cores plus a
-  Postgres primary near its batched-insert ceiling. Moving raw telemetry to ClickHouse/Scylla is ADR-0002's next step.
+- 100K events/s is not reached on one laptop: the pipeline sustains ~24K events/s with zero loss and Kafka buffers
+  69K/s, with the single Postgres primary as the ceiling. Moving raw telemetry to ClickHouse/Scylla is ADR-0002's next step.
 - Device mTLS, Keycloak/OIDC and Vault are designed (threat model, K8s/Terraform) but the demo uses HS256 JWT with a local user table.
 - The ML model is trained on simulated history from the same wear model the simulator uses; real-world validation is future work.
 - Terraform is provided for AWS only and has not been applied.

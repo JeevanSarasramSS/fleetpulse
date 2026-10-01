@@ -62,6 +62,8 @@ open http://localhost:8000              # manager@aurora.demo / demo1234 (analys
 pip install -r requirements.txt pytest pytest-cov pytest-bdd httpx
 pytest --cov                                                                # unit (99% on core)
 pytest -m integration tests/integration tests/contract tests/acceptance -o addopts=""   # live stack
+python tests/load/pipeline_load.py --rate 25000 --duration 120 --processors 12   # zero-loss throughput test
+python tests/load/soak.py 45                                                      # soak
 ```
 
 - Risk scores appear one or two batch runs (about 1-2 minutes) after a fresh start.
@@ -89,20 +91,24 @@ All on 2026-10-01 (IST).
 | 20:24 | **Alert latency.** Alerts now pushed before the telemetry insert; consume batches 0.1 s / 2,000; 4 processor replicas so capacity exceeds the 3x burst. Critical p95 7.0 s → 2.6 s. Docs, diagrams and solution document (docx + Word PDF) re-synced |
 | 20:41 | **Chaos recovery.** After killing processors and restarting the broker, the consumer group stalled 2-3 min (45 s session timeout per dead member). Session timeout 10 s: flow resumes ~26 s after a broker restart. First fully green CI run (test, SAST, e2e incl. chaos) |
 | 21:05 | Commit history cleaned of co-author trailers (code unchanged); `v1.0-submission` moved to `cc79ace` |
+| 22:30 | Official submission format arrived (Drive folder + form, deadline Fri 2 Oct 11:00 AM); Drive-ready folder built |
+| 23:00-00:30 | **Upgrade pass.** Zero-loss pipeline load test (`tests/load/pipeline_load.py`, parallel producers via `simulator --shard`): 25.7K/s offered with 3x bursts, every event written; Kafka absorbs 69K/s, Postgres ceiling ~24K/s. API: fair multi-process load client + 4 workers, p95 456 → 110 ms at 50 users. Data freshness KPI (vehicle → dashboard ~0.15 s). Fixed events/s KPI (showed one replica's share). Grafana dashboard provisioned. CI `k8s` job deploys the production manifests on kind (config-only overlay, restricted PSS); CronJob made PSS-compliant. Coverage gate widened to all domain modules (98%). Demo DB reset (old 15 GB daily partition made inserts slow). 45-min soak: 15.8M events, no restarts, freshness p50 0.19 s, but bursts back up after ~25 min. Narrated 9.5-min video script |
 
 ## 6. Current status (measured)
 
 | Area | Result | Source |
 |---|---|---|
 | Fleet | 100,000 vehicles, 33,333 drivers, 3 tenants, seeded in ~3.4 s | seed logs |
-| Throughput | ~5,000 events/s sustained + 15,000 events/s bursts (10 s every 2 min), 4 processors; 33.9K events/s per core hot path | `docs/evidence/processor_bench.txt` |
+| Throughput | zero loss at 12.8K and 25.7K events/s offered with 3x bursts; Kafka absorbs 69K/s; ceiling ~24K/s (one Postgres); demo default 5K/s | `docs/evidence/processor_bench.txt` |
+| Data freshness | vehicle → dashboard p50 ~0.15-0.19 s (target < 2 s) | dashboard KPI, `docs/evidence/soak.txt` |
+| Soak (45 min) | 15.8M events, no restarts; freshness p95 7.9 s once the hourly partition outgrows cache (~25 min) | `docs/evidence/soak.txt` |
 | Critical alert latency | p50 0.17 s, p95 2.6 s, max 3.2 s through a burst (target < 5 s) | `docs/evidence/alert_latency.txt` |
 | Batch scoring | 100,000 vehicles in ~10 s, flat as history grows | batch logs |
 | ML | ROC-AUC 0.878 vs 0.688 baseline; precision@top-2% 27.8% vs 6.6% (4.2x) | `fleetpulse/ml/metrics.json` |
-| API | p95 71 ms / p99 110 ms at 10 concurrent; p95 456 ms at 50 concurrent (shared box) | `docs/evidence/api_load.txt` |
+| API | p95 110 ms / p99 132 ms at 50 concurrent users; p95 224 ms at 100 | `docs/evidence/api_load.txt` |
 | Query tuning | 174 ms → 0.58 ms (vehicle telemetry); 27 → 0.40 ms (top risk); 2.7 → 0.15 ms (open alerts) | `docs/evidence/explain_analyze.txt` |
 | Recovery | flow resumes ~26 s after a broker restart, zero loss | `docs/evidence/chaos.txt` |
-| Tests | 50 unit (99% core coverage), 8 integration, 10 contract, 6 BDD; all green in CI | GitHub Actions |
+| Tests | 50 unit (98% of domain modules), 8 integration, 10 contract, 6 BDD; ZAP, Trivy, Bandit, chaos; K8s on kind; all green in CI | GitHub Actions |
 | Submission | Repo tag `v1.0-submission`; solution document docx + PDF in `docs/solution/` | |
 
 **Submission (official instructions, 2026-10-01):** deadline Friday 2 Oct 2026, 11:00 AM, via a Google Form plus a
@@ -116,13 +122,16 @@ artifacts (codebase, GitHub link, documentation). A ready-to-upload copy is buil
 ## 7. Known gaps and planned upgrades
 
 Gaps (also listed honestly in the README and solution document):
-- 100K events/s not load-tested end to end; measured per-core numbers imply ~3-4 processor cores plus a Postgres
-  primary near its batched-insert ceiling. Next step: raw telemetry to ClickHouse or Scylla, Parquet on S3 for cold.
+- 100K events/s not reached on one laptop: ~24K/s sustained with zero loss, Kafka buffers 69K/s; one Postgres primary
+  is the ceiling. Next step: raw telemetry to ClickHouse or Scylla, Parquet on S3 for cold.
+- Soak: after ~25 min the current hourly partition outgrows Postgres cache and 3x bursts take 30-60 s to clear.
+  Quick fix: one unique (vin, ts, seq) index instead of two vin-leading indexes, larger shared_buffers.
 - Device mTLS, Keycloak/OIDC and Vault are designed but the demo uses HS256 JWT with a local user table.
 - ML is trained on simulated history from the same wear model as the simulator.
 - Terraform (AWS) written but not applied; no long soak test beyond ~15 min; no OpenTelemetry tracing yet.
 
 Upgrade backlog (pick from here, then log it in the changelog):
+0. Merge telemetry indexes into unique (vin, ts, seq) + raise shared_buffers; re-run the 45-min soak.
 1. ClickHouse for raw telemetry + Parquet cold tier with real retention/cost numbers.
 2. Keycloak OIDC + mTLS for devices + secrets from Vault / K8s Secrets.
 3. Helm chart and KEDA autoscaling of processors on consumer lag.
@@ -144,6 +153,9 @@ Upgrade backlog (pick from here, then log it in the changelog):
 
 Newest first. One line per change: date, what changed, why.
 
+- 2026-10-02: Honest soak results; narrated 9.5-min explainer script (docs/demo-script.md); docs and solution document refreshed.
+- 2026-10-01: Fleet-wide events/s KPI (per-second buckets); soak test script.
+- 2026-10-01: Pipeline/API load tooling and evidence, data freshness KPI, Grafana dashboard, K8s-on-kind CI job, coverage scope.
 - 2026-10-01: Recorded the official submission format and deadline; built the Drive-ready submission folder.
 - 2026-10-01: Added this PROJECT_CONTEXT.md as the living record of the project.
 - 2026-10-01: Consumer session timeout 10 s; recovery test polls up to 180 s (CI chaos step was failing).
