@@ -100,7 +100,10 @@ async def stats(p: Principal = Depends(current_user)):
                  (SELECT count(*) FROM alert WHERE tenant_id = %(t)s AND acked_at IS NULL AND severity >= 4),
                  (SELECT count(*) FROM risk_score WHERE tenant_id = %(t)s AND score >= 0.3)""", {"t": p.tenant_id})
         vehicles, open_alerts, critical, high_risk = await cur.fetchone()
-    eps, total, top, fresh = await rds.mget("stats:eps", "stats:events", "stats:topdtc", "stats:fresh_ms")
+    now = int(time.time())  # fleet-wide events/s: mean of the last 5 complete per-second buckets (all replicas)
+    total, top, fresh, *secs = await rds.mget("stats:events", "stats:topdtc", "stats:fresh_ms",
+                                              *(f"stats:eps:{now - i}" for i in range(1, 6)))
+    eps = sum(int(x or 0) for x in secs) / 5
     out = {"vehicles": vehicles, "open_alerts": open_alerts, "critical_alerts": critical, "high_risk": high_risk,
             "events_per_sec": int(eps or 0), "events_total": int(total or 0), "top_dtcs": json.loads(top or "[]"),
             "data_age_ms": None if fresh is None else int(fresh)}  # vehicle timestamp -> readable in the API (median)

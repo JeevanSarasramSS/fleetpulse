@@ -133,6 +133,9 @@ class Processor:
             p.geoadd(f"geo:{t}", (e.lon, e.lat, vin))
         n_ok = len(rows[0])
         p.incrby("stats:events", n_ok)
+        sec = f"stats:eps:{int(time.time())}"  # per-second bucket shared by all replicas (fleet-wide events/s)
+        p.incrby(sec, n_ok)
+        p.expire(sec, 15)
         p.set("stats:topdtc", json.dumps(self.topk.top()))
         if latest:  # data freshness: how old the newest state we just made readable is (vehicle clock -> Redis)
             ages = sorted(time.time() * 1000 - e.ts_ms for e in latest.values())
@@ -155,7 +158,6 @@ class Processor:
             self.dlq.poll(0)
             if time.time() - last >= 5:
                 eps = count / (time.time() - last)
-                self.r.set("stats:eps", round(eps))
                 print(f"processed {eps:.0f} events/s", flush=True)
                 last, count = time.time(), 0
         self.consumer.close()
