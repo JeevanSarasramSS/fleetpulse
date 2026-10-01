@@ -129,6 +129,10 @@ class Copilot:
 
     async def _ask_rules(self, q: str) -> dict:
         ql, vins = q.lower(), vins_in(q)
+        if not vins and re.fullmatch(r"\W*(hi|hello|hey|help|what can you do)\W*", ql):
+            return self._done("I can tell you which vehicles are most likely to break down this week, what is critical "
+                              "right now, why a vehicle is at risk (give me its VIN), how much acting now would save, "
+                              "and I can propose a work order for a VIN for a manager to approve.")
         if vins and re.search(r"work order|schedule|book|fix", ql):
             s = await self.call("vehicle_summary", {"vin": vins[0]})
             if "error" in s:

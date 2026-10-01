@@ -1,0 +1,17 @@
+Critical-alert latency, vehicle timestamp -> browser (WebSocket), measured 2026-10-01 after hardening.
+Setup: docker compose on one 16-vCPU Windows laptop (Docker Desktop / WSL2), 100,000 vehicles,
+5,000 events/s base with 3x (15,000 events/s) bursts for 10 s every 120 s, 4 processor replicas.
+Method: a WebSocket client in the dashboard page recorded Date.now() - event_ts_ms for every pushed alert
+(severity >= 3) over several minutes including at least one burst. Container clock was ~0.3 s behind the host,
+so these figures slightly overstate true latency.
+
+                       n     p50      p95      p99      max
+all alerts (sev>=3)    199   170 ms   2752 ms  3058 ms  3273 ms
+critical (sev>=4)       86   170 ms   2576 ms     -     3175 ms
+WebSocket hop (pushed_ms - processed_ms): p50 1 ms
+
+Before hardening (same machine, 2 replicas, 0.5 s consume timeout, alerts written after telemetry):
+all alerts n=134  p50 337 ms  p95 7003 ms  max 7170 ms  (p95 broke the 5 s target during bursts)
+
+Changes: alerts are inserted and pushed before the bulk telemetry insert; consume(2000, 0.1 s) instead of
+consume(5000, 0.5 s); 4 processor replicas (12 partitions -> 3 each) so capacity exceeds the 3x burst.

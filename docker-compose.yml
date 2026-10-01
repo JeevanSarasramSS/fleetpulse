@@ -49,7 +49,7 @@ services:
   processor:
     <<: *app
     command: [python, -m, fleetpulse.processor.run]
-    deploy: {replicas: 2}   # consumer group splits the 12 partitions; scale with --scale processor=N
+    deploy: {replicas: 4}   # consumer group splits the 12 partitions (3 each); 4 keeps up with the 3x burst
     depends_on:
       seed: {condition: service_completed_successfully}
       topics: {condition: service_completed_successfully}

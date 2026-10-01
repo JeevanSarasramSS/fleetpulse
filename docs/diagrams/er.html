@@ -19,5 +19,5 @@ const H=n=>26+E[n][2].length*17;
 R.forEach(([a,b])=>{const[x1,y1]=E[a],[x2,y2]=E[b];mk('path',{class:'l',d:`M${x1+W/2} ${y1+H(a)/2}L${x2+W/2} ${y2+H(b)/2}`})});
 for(const n in E){const[x,y,f]=E[n];mk('rect',{class:'e',x,y,width:W,height:H(n),rx:6});mk('rect',{class:'h',x,y,width:W,height:22,rx:6});mk('text',{class:'ht',x:x+8,y:y+16},n);f.forEach((s,i)=>mk('text',{x:x+8,y:y+38+i*17},s))}
 </script>
-<div style="font:12px Segoe UI,Arial;padding:0 20px">Telemetry (partitioned by day, unique (vin, seq, ts)), the vehicle_daily materialised view and fault_knowledge (pgvector) sit outside the 3NF core. Deliberate denormalisation: alert.tenant_id and risk_score.tenant_id avoid a 3-table join on the hottest tenant-filtered queries.</div>
+<div style="font:12px Segoe UI,Arial;padding:0 20px">Telemetry (partitioned by hour, unique (vin, seq, ts)), the vehicle_daily incremental rollup and fault_knowledge (pgvector) sit outside the 3NF core. Deliberate denormalisation: alert.tenant_id and risk_score.tenant_id avoid a 3-table join on the hottest tenant-filtered queries.</div>
 </body></html>
