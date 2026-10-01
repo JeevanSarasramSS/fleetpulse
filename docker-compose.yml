@@ -37,7 +37,7 @@ services:
   redis:
     image: redis:7-alpine
     command: [redis-server, --save, "", --maxmemory, 512mb, --maxmemory-policy, allkeys-lru]
-    ports: ["6379:6379"]
+    ports: ["16379:6379"]   # host port only for debugging; 6379 is often taken by other local stacks
     healthcheck: {test: ["CMD", "redis-cli", "ping"], interval: 3s, retries: 20}
 
   seed:
