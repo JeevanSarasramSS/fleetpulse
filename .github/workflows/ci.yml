@@ -29,7 +29,7 @@ jobs:
       - run: |
           for i in $(seq 1 60); do curl -sf localhost:8000/readyz && break; sleep 3; done
           sleep 30
-          pip install pytest pytest-bdd httpx
+          pip install pytest pytest-bdd httpx pytest-github-actions-annotate-failures
           pytest -m integration tests/integration tests/contract tests/acceptance -o addopts="" --junitxml=e2e.xml
       - name: Trivy image scan
         uses: aquasecurity/trivy-action@v0.36.0
