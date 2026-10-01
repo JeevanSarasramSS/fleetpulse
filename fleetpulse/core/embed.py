@@ -16,7 +16,7 @@ def embed(text: str, dim: int = DIM) -> list[float]:
     grams = toks + [a + "_" + b for a, b in zip(toks, toks[1:])]
     v = [0.0] * dim
     for g in grams:
-        h = int.from_bytes(hashlib.md5(g.encode()).digest()[:8], "little")
+        h = int.from_bytes(hashlib.md5(g.encode(), usedforsecurity=False).digest()[:8], "little")
         v[h % dim] += 1.0 if (h >> 63) & 1 else -1.0
     n = math.sqrt(sum(x * x for x in v)) or 1.0
     return [x / n for x in v]

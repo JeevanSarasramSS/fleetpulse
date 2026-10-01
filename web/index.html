@@ -27,11 +27,14 @@ main{display:grid;grid-template-columns:1.6fr 1fr;gap:12px;padding:0 16px 16px}
 .sev{min-width:22px;text-align:center;border-radius:4px;padding:1px 4px;font-weight:600;font-size:12px}
 .s5,.s4{background:var(--crit)}.s3{background:var(--warn);color:#000}.s2,.s1{background:#30363d}
 .bar{height:6px;background:#30363d;border-radius:3px;flex:1;min-width:60px}.bar i{display:block;height:100%;border-radius:3px;background:var(--crit)}
-.muted{color:var(--muted)}.flash{animation:fl 1.2s}@keyframes fl{from{background:#5a1e1e}to{background:transparent}}
+.muted{color:var(--muted)}.flash{animation:fl 1.5s ease-out}
+.rrow{display:grid;grid-template-columns:1fr auto;gap:2px 10px;padding:7px 4px;border-bottom:1px solid var(--line);cursor:pointer}
+.rrow:hover{background:#1f2630}.rrow .bar{grid-column:1/3}.rrow .why{grid-column:1/3;font-size:12px;color:var(--muted)}
+#conn{font-size:12px;color:var(--warn)}@keyframes fl{from{background:#5a1e1e}to{background:transparent}}
 #chat{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow:auto;margin-bottom:8px}
 .msg{padding:7px 9px;border-radius:8px;max-width:95%}.me{background:#1f6feb33;align-self:flex-end}.bot{background:#30363d}
 .trace{font-size:11px;color:var(--muted)}
-#drawer{position:fixed;right:0;top:0;height:100%;width:min(460px,100%);background:var(--panel);border-left:1px solid var(--line);padding:16px;overflow:auto;transform:translateX(100%);transition:.2s}
+#drawer{position:fixed;right:0;top:0;z-index:1000;box-shadow:-8px 0 24px #0008;height:100%;width:min(460px,100%);background:var(--panel);border-left:1px solid var(--line);padding:16px;overflow:auto;transform:translateX(100%);transition:.2s}
 #drawer.open{transform:none}
 #login{max-width:340px;margin:12vh auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:20px;display:flex;flex-direction:column;gap:10px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 16px 16px}
@@ -51,7 +54,7 @@ main{display:grid;grid-template-columns:1.6fr 1fr;gap:12px;padding:0 16px 16px}
 
 <div id="app" hidden>
 <header><h1>⚡ FleetPulse</h1><span class="muted" id="tenant"></span>
-  <span class="who" id="who"></span><button class="ghost" onclick="logout()">Sign out</button></header>
+  <span id="conn" hidden>reconnecting…</span><span class="who" id="who"></span><button class="ghost" onclick="logout()">Sign out</button></header>
 <section class="kpis">
   <div class="kpi"><b id="k-veh">–</b><span>Connected vehicles</span></div>
   <div class="kpi"><b id="k-eps">–</b><span>Events / sec (live)</span></div>
@@ -80,7 +83,7 @@ main{display:grid;grid-template-columns:1.6fr 1fr;gap:12px;padding:0 16px 16px}
 <script>
 const $ = s => document.querySelector(s);
 let token = sessionStorage.getItem('fp_token'), me = JSON.parse(sessionStorage.getItem('fp_me') || 'null');
-let map, layer, ws, lat = [];
+let map, layer, ws, lat = [], fitted = false;
 const drawer = $('#drawer');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -98,18 +101,34 @@ async function login() {
   const j = await r.json(); token = j.access_token; me = {email: $('#email').value, role: j.role, tenant: j.tenant_id};
   sessionStorage.setItem('fp_token', token); sessionStorage.setItem('fp_me', JSON.stringify(me)); start();
 }
+// Background pollers: swallow transient network errors (API restart, laptop sleep) and show a badge instead.
+const safe = fn => async () => {
+  try { await fn(); $('#conn').hidden = true; } catch (e) { $('#conn').hidden = false; }
+};
 function logout() { sessionStorage.clear(); location.reload(); }
 
 function start() {
   $('#login').hidden = true; $('#app').hidden = false;
   $('#who').textContent = `${me.email} · ${me.role}`; $('#tenant').textContent = `tenant ${me.tenant}`;
   if (window.L) {  // map degrades gracefully if the tile/CDN is unreachable
-    map = L.map('map', {preferCanvas: true}).setView([20.5, 78.9], 5);
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '© OpenStreetMap contributors'}).addTo(map);
+    map = L.map('map', {preferCanvas: true, scrollWheelZoom: false}).setView([20.5, 78.9], 5);
+    map.on('click', () => map.scrollWheelZoom.enable());  // don't hijack page scrolling until the map is clicked
+    // Keyless basemap that needs no Referer (Esri dark canvas); falls back to OpenStreetMap if Esri tiles fail.
+    const esri = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_';
+    const base = L.tileLayer(esri + 'Base/MapServer/tile/{z}/{y}/{x}', {maxZoom: 16, attribution: 'Tiles © Esri, HERE, Garmin, © OpenStreetMap contributors'}).addTo(map);
+    const labels = L.tileLayer(esri + 'Reference/MapServer/tile/{z}/{y}/{x}', {maxZoom: 16}).addTo(map);
+    let tileErrors = 0;
+    base.on('tileerror', () => {
+      if (++tileErrors !== 5) return;
+      map.removeLayer(base); map.removeLayer(labels);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, referrerPolicy: 'strict-origin-when-cross-origin',
+        attribution: '© OpenStreetMap contributors'}).addTo(map);
+    });
     layer = L.layerGroup().addTo(map);
   }
-  refresh(); loadAlerts(); loadRisk(); loadWOs(); connectWS();
-  setInterval(refresh, 3000); setInterval(loadRisk, 30000); setInterval(loadMap, 5000); loadMap();
+  [refresh, loadAlerts, loadRisk, loadWOs, loadMap].forEach(f => safe(f)());
+  connectWS();
+  setInterval(safe(refresh), 3000); setInterval(safe(loadRisk), 30000); setInterval(safe(loadMap), 5000);
 }
 async function refresh() {
   const s = await api('/api/v1/stats');
@@ -119,11 +138,13 @@ async function refresh() {
 }
 async function loadMap() {
   const d = await api('/api/v1/live?limit=4000');
-  $('#maskNote').textContent = (d.masked ? '(locations masked for your role) ' : '') + `${d.items.length} shown`;
+  $('#maskNote').textContent = (d.masked ? '(locations masked for your role) ' : '')
+    + `${d.items.length.toLocaleString()} of ${(d.total ?? d.items.length).toLocaleString()} shown`;
   if (!layer) return;
   layer.clearLayers();
-  d.items.forEach(v => L.circleMarker([v.lat, v.lon], {radius: 2, color: '#2f81f7', weight: 0, fillOpacity: .7})
+  d.items.forEach(v => L.circleMarker([v.lat, v.lon], {radius: 2.5, color: '#58a6ff', weight: 0, fillOpacity: .8})
     .on('click', () => openVehicle(v.vin)).addTo(layer));
+  if (!fitted && d.items.length) { map.fitBounds(d.items.map(v => [v.lat, v.lon]), {padding: [20, 20]}); fitted = true; }
 }
 function alertRow(a, fresh) {
   const code = a.detail && a.detail.code ? ' ' + a.detail.code : '';
@@ -144,16 +165,18 @@ function connectWS() {
     const sorted = [...lat].sort((x, y) => x - y);
     $('#k-lat').textContent = `p50 ${(sorted[Math.floor(sorted.length / 2)] / 1000).toFixed(2)} s`;
     $('#alerts').insertAdjacentHTML('afterbegin', alertRow(a, true));
+    const row = $('#alerts').firstElementChild; setTimeout(() => row.classList.remove('flash'), 1600);
     while ($('#alerts').children.length > 60) $('#alerts').lastChild.remove();
   };
   ws.onclose = () => setTimeout(connectWS, 2000);
 }
 async function loadRisk() {
   const d = await api('/api/v1/risk?limit=30');
-  $('#risk').innerHTML = d.items.map(r => `<div class="row" onclick="openVehicle('${esc(r.vin)}')">
-    <span class="mono" style="width:150px">${esc(r.vin)}</span><span style="width:120px">${esc(r.model)}</span>
-    <div class="bar"><i style="width:${(r.score * 100).toFixed(0)}%"></i></div><b style="width:42px;text-align:right">${(r.score * 100).toFixed(0)}%</b>
-    <span class="muted" style="flex:1;font-size:12px">${esc(r.factors.map(f => f.label).join(', '))}</span></div>`).join('')
+  $('#risk').innerHTML = d.items.map(r => `<div class="rrow" onclick="openVehicle('${esc(r.vin)}')">
+    <span><span class="mono">${esc(r.vin)}</span> <span class="muted">· ${esc(r.model)}</span></span>
+    <b style="color:${r.score >= 0.5 ? 'var(--crit)' : 'var(--warn)'}">${(r.score * 100).toFixed(0)}%</b>
+    <div class="bar"><i style="width:${(r.score * 100).toFixed(0)}%"></i></div>
+    <span class="why">${esc(r.factors.map(f => f.label).join(' · '))}</span></div>`).join('')
     || '<div class="muted">Scoring runs every minute once telemetry arrives…</div>';
 }
 async function loadWOs() {
@@ -180,18 +203,19 @@ async function openVehicle(vin) {
     <span class="muted">(mileage baseline ${(v.risk.baseline * 100).toFixed(0)}%)</span></p>
     <p>Why: ${esc(v.risk.factors.map(f => `${f.label} (${f.value})`).join(', ') || 'no single factor')}</p>` : '<p class="muted">Not scored yet</p>';
   const live = v.live ? `<p class="mono">${v.live.masked ? 'Area ' + esc(v.live.geohash) + ' (masked)' : esc(v.live.lat) + ', ' + esc(v.live.lon)}
-    · ${esc(v.live.speed_kmh)} km/h · coolant ${esc(v.live.coolant_c || '–')}°C · 12V ${esc(v.live.batt_v)} V · SoC ${esc(v.live.soc_pct || '–')}%</p>` : '';
-  const pts = v.series.filter(s => s.coolant_c != null);
-  const spark = pts.length > 1 ? sparkline(pts.map(s => s.coolant_c), 'Coolant °C') : '';
+    · ${esc(v.live.speed_kmh)} km/h${v.live.coolant_c ? ` · coolant ${esc(v.live.coolant_c)}°C` : ''} · 12V ${esc(v.live.batt_v)} V${v.live.soc_pct ? ` · SoC ${esc(v.live.soc_pct)}%` : ''}${v.live.fuel_pct ? ` · fuel ${esc(v.live.fuel_pct)}%` : ''}</p>` : '';
+  const cool = v.series.filter(s => s.coolant_c != null), volt = v.series.filter(s => s.batt_v != null);
+  const spark = (cool.length > 1 ? sparkline(cool.map(s => s.coolant_c), 'Coolant °C') : '')
+    + (volt.length > 1 ? sparkline(volt.map(s => s.batt_v), '12V battery V', 1) : '');
   $('#dv').innerHTML = `<h2 class="mono">${esc(v.vin)}</h2><p>${esc(v.model)} · ${esc(v.powertrain)} · ${esc(v.year)} · ${esc(v.fleet)}</p>
     ${risk}${live}${spark}<h3>Recent alerts</h3>${v.alerts.map(a => alertRow(a)).join('') || '<p class="muted">None</p>'}
     ${me.role !== 'analyst' ? `<p><button onclick="$('#q').value='Schedule a work order for ${esc(v.vin)}';ask();drawer.classList.remove('open')">Propose work order</button></p>` : ''}`;
   drawer.classList.add('open');
 }
-function sparkline(vals, label) {
+function sparkline(vals, label, digits = 0) {
   const w = 400, h = 60, mn = Math.min(...vals), mx = Math.max(...vals) || 1;
   const p = vals.map((v, i) => `${(i / (vals.length - 1)) * w},${h - ((v - mn) / ((mx - mn) || 1)) * (h - 6) - 3}`).join(' ');
-  return `<div class="muted" style="font-size:12px">${label} (last 30 min, ${mn.toFixed(0)}–${mx.toFixed(0)})</div>
+  return `<div class="muted" style="font-size:12px">${label} (last 30 min, ${mn.toFixed(digits)}–${mx.toFixed(digits)})</div>
     <svg viewBox="0 0 ${w} ${h}" style="width:100%;height:60px"><polyline points="${p}" fill="none" stroke="#d29922" stroke-width="2"/></svg>`;
 }
 if (token && me) start();

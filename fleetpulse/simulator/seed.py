@@ -1,5 +1,4 @@
 """Seed Postgres with 100K vehicles, drivers, users and the fault knowledge base. Idempotent."""
-import io
 import os
 import sys
 import time

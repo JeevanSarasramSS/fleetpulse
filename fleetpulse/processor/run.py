@@ -27,11 +27,13 @@ BATCH = Histogram("fp_batch_seconds", "Batch processing time")
 
 INSERT_TELEMETRY = """
 INSERT INTO telemetry (vin, ts, seq, lat, lon, speed_kmh, odo_km, soc_pct, fuel_pct, coolant_c, batt_v, evt, dtcs)
-SELECT * FROM unnest(%s::char(17)[], %s::timestamptz[], %s::bigint[], %s::real[], %s::real[], %s::real[], %s::real[],
-                     %s::real[], %s::real[], %s::real[], %s::real[], %s::text[], %s::text[])
+SELECT vin, ts, seq, lat, lon, speed_kmh, odo_km, soc_pct, fuel_pct, coolant_c, batt_v, evt,
+       CASE WHEN dtcs_csv = '' THEN NULL ELSE string_to_array(dtcs_csv, ',') END
+FROM unnest(%s::char(17)[], %s::timestamptz[], %s::bigint[], %s::real[], %s::real[], %s::real[], %s::real[],
+            %s::real[], %s::real[], %s::real[], %s::real[], %s::text[], %s::text[])
   AS t(vin, ts, seq, lat, lon, speed_kmh, odo_km, soc_pct, fuel_pct, coolant_c, batt_v, evt, dtcs_csv)
 ON CONFLICT DO NOTHING
-""".replace("dtcs_csv)", "dtcs_csv)").replace("SELECT * FROM", "SELECT vin, ts, seq, lat, lon, speed_kmh, odo_km, soc_pct, fuel_pct, coolant_c, batt_v, evt, CASE WHEN dtcs_csv = '' THEN NULL ELSE string_to_array(dtcs_csv, ',') END FROM")
+"""
 
 INSERT_ALERT = """
 INSERT INTO alert (tenant_id, vin, rule, severity, detail, event_ts, dedup_key)
@@ -93,17 +95,32 @@ class Processor:
                 latest[e.vin] = e
             alerts.extend(self.rules.evaluate(e))
 
+        # Alerts first, in their own small transaction, and pushed before the bulk telemetry insert so a
+        # critical fault never waits behind ~thousands of telemetry rows. Replays are safe: dedup_key makes
+        # the insert a no-op, so an alert is never pushed twice.
         new_alerts = []
-        with self.pg.cursor() as c:
-            if rows[0]:
+        if alerts:
+            with self.pg.cursor() as c:
+                for a in alerts:
+                    c.execute(INSERT_ALERT, (self.tenant_of[a.vin], a.vin, a.rule, a.severity, json.dumps(a.detail),
+                                             datetime.fromtimestamp(a.event_ts_ms / 1000, timezone.utc), a.dedup_key))
+                    got = c.fetchone()
+                    if got:
+                        new_alerts.append((got[0], a))
+            self.pg.commit()
+        if new_alerts:
+            p = self.r.pipeline(transaction=False)
+            for alert_id, a in new_alerts:
+                ALERTS.labels(a.rule).inc()
+                p.publish(f"alerts:{self.tenant_of[a.vin]}", json.dumps(
+                    {"alert_id": alert_id, "vin": a.vin, "rule": a.rule, "severity": a.severity, "detail": a.detail,
+                     "event_ts_ms": a.event_ts_ms, "processed_ms": int(time.time() * 1000)}))
+            p.execute()
+
+        if rows[0]:
+            with self.pg.cursor() as c:
                 c.execute(INSERT_TELEMETRY, rows)
-            for a in alerts:
-                c.execute(INSERT_ALERT, (self.tenant_of[a.vin], a.vin, a.rule, a.severity, json.dumps(a.detail),
-                                         datetime.fromtimestamp(a.event_ts_ms / 1000, timezone.utc), a.dedup_key))
-                got = c.fetchone()
-                if got:
-                    new_alerts.append((got[0], a))
-        self.pg.commit()
+            self.pg.commit()
 
         p = self.r.pipeline(transaction=False)
         for vin, e in latest.items():
@@ -111,11 +128,6 @@ class Processor:
             p.hset(f"v:{vin}", mapping={k: ("" if v is None else (",".join(v) if isinstance(v, list) else v))
                                         for k, v in e.to_dict().items()})
             p.geoadd(f"geo:{t}", (e.lon, e.lat, vin))
-        for alert_id, a in new_alerts:
-            ALERTS.labels(a.rule).inc()
-            p.publish(f"alerts:{self.tenant_of[a.vin]}", json.dumps(
-                {"alert_id": alert_id, "vin": a.vin, "rule": a.rule, "severity": a.severity, "detail": a.detail,
-                 "event_ts_ms": a.event_ts_ms, "processed_ms": int(time.time() * 1000)}))
         n_ok = len(rows[0])
         p.incrby("stats:events", n_ok)
         p.set("stats:topdtc", json.dumps(self.topk.top()))
@@ -127,7 +139,9 @@ class Processor:
         signal.signal(signal.SIGTERM, lambda *_: setattr(self, "running", False))
         last, count = time.time(), 0
         while self.running:
-            msgs = self.consumer.consume(num_messages=5000, timeout=0.5)
+            # Small, frequent batches: consume() waits for the full timeout unless num_messages arrive, so a
+            # long timeout adds straight to alert latency. 0.1 s keeps p50 well under a second.
+            msgs = self.consumer.consume(num_messages=2000, timeout=0.1)
             if not msgs:
                 continue
             with BATCH.time():

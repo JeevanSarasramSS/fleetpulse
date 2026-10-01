@@ -86,10 +86,10 @@ def segment_trips(speeds: list[float], stop_cost: float = 1.0, switch_penalty: f
         labels[i] = s
         s = bt[i][s]
     trips, start = [], None
-    for i, l in enumerate(labels):
-        if l == 1 and start is None:
+    for i, lab in enumerate(labels):
+        if lab == 1 and start is None:
             start = i
-        if l == 0 and start is not None:
+        if lab == 0 and start is not None:
             trips.append((start, i - 1))
             start = None
     if start is not None:

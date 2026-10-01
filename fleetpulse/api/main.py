@@ -40,7 +40,8 @@ async def timing_and_headers(request: Request, call_next):
     route = request.scope.get("route")
     REQ_LATENCY.labels(getattr(route, "path", "other")).observe(time.perf_counter() - t0)
     resp.headers.update({"X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY",
-                         "Referrer-Policy": "no-referrer", "Cache-Control": "no-store"})
+                         # origin only: map tile servers reject requests with no Referer at all
+                         "Referrer-Policy": "strict-origin-when-cross-origin", "Cache-Control": "no-store"})
     return resp
 
 
@@ -155,14 +156,30 @@ async def vehicle_detail(vin: str, p: Principal = Depends(require("read"))):
 @app.get("/api/v1/live")
 async def live_positions(p: Principal = Depends(require("read")), lat: float = 20.5, lon: float = 78.9,
                          radius_km: float = Query(2500, le=3000), limit: int = Query(3000, le=10000)):
-    """Positions from the Redis geo index (hot tier). Analysts get coarse, masked positions."""
+    """Positions from the Redis geo index (hot tier). Analysts get coarse, masked positions.
+
+    COUNT would return only the `limit` vehicles nearest the centre (one depot city), so we take every
+    match and keep an even stride: the map shows all depots. ~33K members per tenant is a few ms in Redis.
+    """
     res = await rds.geosearch(f"geo:{p.tenant_id}", longitude=lon, latitude=lat, radius=radius_km, unit="km",
-                              withcoord=True, count=limit)
+                              withcoord=True)
+    total = len(res)
+    if total > limit:
+        res = res[::-(-total // limit)][:limit]
     out = []
     for vin, (lo, la) in res:
         m = mask_location(la, lo, p.role)
         out.append({"vin": vin, "lat": m["lat"], "lon": m["lon"]})
-    return {"items": out, "masked": not can(p.role, "precise_location")}
+    return {"items": out, "total": total, "masked": not can(p.role, "precise_location")}
+
+
+# Two static statements (not string-built SQL) so the open-alerts one can use the partial index.
+ALERTS_ALL_SQL = """
+  SELECT alert_id, vin, rule, severity, detail, event_ts, created_at, acked_at FROM alert
+  WHERE tenant_id = %s AND alert_id < %s AND severity >= %s ORDER BY alert_id DESC LIMIT %s"""
+ALERTS_OPEN_SQL = """
+  SELECT alert_id, vin, rule, severity, detail, event_ts, created_at, acked_at FROM alert
+  WHERE tenant_id = %s AND alert_id < %s AND severity >= %s AND acked_at IS NULL ORDER BY alert_id DESC LIMIT %s"""
 
 
 @app.get("/api/v1/alerts")
@@ -170,10 +187,7 @@ async def list_alerts(p: Principal = Depends(require("read")), limit: int = Quer
                       cursor: str | None = None, open_only: bool = True, min_severity: int = Query(1, ge=1, le=5)):
     before = _cursor_dec(cursor) or 2 ** 62
     async with pool.connection() as conn:
-        cur = await conn.execute(f"""
-          SELECT alert_id, vin, rule, severity, detail, event_ts, created_at, acked_at FROM alert
-          WHERE tenant_id = %s AND alert_id < %s AND severity >= %s {"AND acked_at IS NULL" if open_only else ""}
-          ORDER BY alert_id DESC LIMIT %s""", (p.tenant_id, before, min_severity, limit))
+        cur = await conn.execute(ALERTS_OPEN_SQL if open_only else ALERTS_ALL_SQL, (p.tenant_id, before, min_severity, limit))
         rows = await cur.fetchall()
     items = [{"alert_id": r[0], "vin": r[1], "rule": r[2], "severity": r[3], "detail": r[4], "event_ts": r[5],
               "created_at": r[6], "acked_at": r[7]} for r in rows]
