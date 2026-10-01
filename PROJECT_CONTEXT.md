@@ -92,7 +92,7 @@ All on 2026-10-01 (IST).
 | 20:41 | **Chaos recovery.** After killing processors and restarting the broker, the consumer group stalled 2-3 min (45 s session timeout per dead member). Session timeout 10 s: flow resumes ~26 s after a broker restart. First fully green CI run (test, SAST, e2e incl. chaos) |
 | 21:05 | Commit history cleaned of co-author trailers (code unchanged); `v1.0-submission` moved to `cc79ace` |
 | 22:30 | Official submission format arrived (Drive folder + form, deadline Fri 2 Oct 11:00 AM); Drive-ready folder built |
-| 23:00-00:30 | **Upgrade pass.** Zero-loss pipeline load test (`tests/load/pipeline_load.py`, parallel producers via `simulator --shard`): 25.7K/s offered with 3x bursts, every event written; Kafka absorbs 69K/s, Postgres ceiling ~24K/s. API: fair multi-process load client + 4 workers, p95 456 → 110 ms at 50 users. Data freshness KPI (vehicle → dashboard ~0.15 s). Fixed events/s KPI (showed one replica's share). Grafana dashboard provisioned. CI `k8s` job deploys the production manifests on kind (config-only overlay, restricted PSS); CronJob made PSS-compliant. Coverage gate widened to all domain modules (98%). Demo DB reset (old 15 GB daily partition made inserts slow). 45-min soak: 15.8M events, no restarts, freshness p50 0.19 s, but bursts back up after ~25 min. Narrated 9.5-min video script |
+| 23:00-00:30 | **Upgrade pass.** Zero-loss pipeline load test (`tests/load/pipeline_load.py`, parallel producers via `simulator --shard`): 25.7K/s offered with 3x bursts, every event written; Kafka absorbs 69K/s, Postgres ceiling ~24K/s. API: fair multi-process load client + 4 workers, p95 456 → 110 ms at 50 users. Data freshness KPI (vehicle → dashboard ~0.15 s). Fixed events/s KPI (showed one replica's share). Grafana dashboard provisioned. CI `k8s` job deploys the production manifests on kind (config-only overlay, restricted PSS); CronJob made PSS-compliant. Coverage gate widened to all domain modules (98%). Demo DB reset (old 15 GB daily partition made inserts slow). 45-min soak: 15.8M events, no restarts, freshness p50 0.19 s, but bursts back up after ~25 min. Narrated video script (later cut to ~6.5 min) |
 
 ## 6. Current status (measured)
 
@@ -153,6 +153,7 @@ Upgrade backlog (pick from here, then log it in the changelog):
 
 Newest first. One line per change: date, what changed, why.
 
+- 2026-10-02: Explainer script shortened to ~6.5 min at the owner's request; solution document demo timeline updated.
 - 2026-10-02: Honest soak results; narrated 9.5-min explainer script (docs/demo-script.md); docs and solution document refreshed.
 - 2026-10-01: Fleet-wide events/s KPI (per-second buckets); soak test script.
 - 2026-10-01: Pipeline/API load tooling and evidence, data freshness KPI, Grafana dashboard, K8s-on-kind CI job, coverage scope.

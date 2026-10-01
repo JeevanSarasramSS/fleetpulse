@@ -16,7 +16,7 @@ COVER = {
     "Team Members & Roles:": "Team Members & Roles: Jeevan Sarasram S S (Reg. No. RA2311056010035), solo developer: problem framing, architecture, backend, data engineering, ML, DevOps and testing; js9882@srmist.edu.in, jeevansiva2005@gmail.com",
     "Problem Space Chosen:": "Problem Space Chosen: Predictive maintenance for mixed ICE / hybrid / EV fleets (with real-time critical-fault alerting)",
     "Repository URL:": f"Repository URL: {REPO} (tag v1.0-submission)",
-    "Demo Video URL": "Demo Video URL (explainer, ≤ 10 min): [Link]",
+    "Demo Video URL": "Demo Video URL (explainer, ~6.5 min): [Link]",
     "Date of Submission:": "Date of Submission: 01/10/2026",
 }
 
@@ -200,16 +200,14 @@ TABLES = {
     ],
     "Time": None,
 }
-DEMO = [["0:00 – 0:45", "Problem", "US$2,400 per breakdown, ~2,800 breakdowns a week at 100K vehicles, mixed ICE/EV fleets, one format per OEM"],
-        ["0:45 – 1:45", "Architecture", "Simulator → Kafka → processors (normalise, VIN check, Bloom dedup, rules) → Postgres/Redis/pgvector; batch rollup + ML; FastAPI"],
-        ["1:45 – 2:45", "Live dashboard", "Manager login; live KPIs incl. alert latency (~0.2 s) and data freshness (~0.15 s); map of 8 depots; alerts over WebSocket"],
-        ["2:45 – 3:45", "Predicting breakdowns", "Top-risk vehicle: risk %, reasons, trends, alerts; model 0.88 vs 0.69 ROC-AUC, 4.2x precision; propose work order"],
-        ["3:45 – 4:45", "AI copilot", "Tenant-scoped tool calls, savings estimate, prompt injection refused, human approval, audit log"],
-        ["4:45 – 5:20", "Privacy", "Analyst masked map and no actions; cross-tenant VIN returns 404; audited erasure (GDPR/DPDP)"],
-        ["5:20 – 6:00", "Observability", "Grafana: events by outcome, ingest latency percentiles, alerts by rule, batch time, API p95, Kafka rate"],
-        ["6:00 – 7:00", "Resilience (live)", "Kill all processors + restart the broker; flow resumes in ~30 s, zero loss, no duplicates"],
-        ["7:00 – 8:45", "Evidence", "Green CI (unit 98%, integration, contract, BDD, ZAP, Trivy, chaos, K8s on kind); 25K/s zero-loss load test; API p95 110 ms @50; 45-min soak; 174 → 0.58 ms query"],
-        ["8:45 – 9:30", "Impact & next steps", "Tens of thousands of US$ saved per week per fleet; ClickHouse for 100K/s, OIDC + mTLS, real-fleet retraining"]]
+DEMO = [["0:00 – 0:35", "Problem", "US$2,400 per breakdown, ~2,800 a week at 100K vehicles; FleetPulse predicts and flags faults in under a second"],
+        ["0:35 – 1:15", "Architecture", "Simulator → Kafka → processors → Postgres / Redis / pgvector; batch rollup + ML scoring"],
+        ["1:15 – 2:00", "Live dashboard", "Manager login; alert latency (~0.2 s) and data freshness (~0.15 s) tiles; map; live critical alerts"],
+        ["2:00 – 3:05", "Prediction + copilot", "Top-risk vehicle with reasons; 0.88 vs 0.69 ROC-AUC; savings estimate; prompt injection refused; audit"],
+        ["3:05 – 3:55", "Crash and recover (live)", "Kill all processors + restart the broker; recovers in ~30 s, zero loss, no duplicates"],
+        ["3:55 – 4:25", "Observability", "Grafana pipeline dashboard showing the outage and recovery"],
+        ["4:25 – 5:50", "Evidence", "Green CI (unit 98%, integration, contract, BDD, ZAP, Trivy, chaos, K8s on kind); 25K/s zero-loss load test; API p95 110 ms @50; 45-min soak"],
+        ["5:50 – 6:30", "Close", "Impact, next steps (ClickHouse for 100K/s, SSO, device certificates)"]]
 STACK = [["Ingestion / Messaging", "Kafka protocol (Redpanda locally, MSK/Confluent in cloud), key = VIN", "Replay, partitioned per-vehicle ordering, consumer groups; RabbitMQ rejected (no replay, lower throughput)"],
          ["Stream / Batch Processing", "Python consumer with batch upserts; batch scorer + incremental rollup", "Simple, testable and measured at 34K ev/s/core; Flink/Spark rejected as too heavy for the time box (next step at scale)"],
          ["Relational / NoSQL / Cache / Search / Vector", "PostgreSQL 16 (3NF + partitions) · Redis 7 · pgvector HNSW", "ACID core and analytics in one engine; Redis for sub-ms live state/geo; pgvector avoids another system. ClickHouse/Scylla deferred (ADR-0002)"],
