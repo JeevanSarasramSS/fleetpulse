@@ -14,7 +14,7 @@ from .features import FEATURE_SQL, FEATURES, row_to_features
 MODEL_PATH = pathlib.Path(__file__).parent / "model.joblib"
 LIFECYCLE_SQL = pathlib.Path(__file__).resolve().parents[2] / "db" / "002_lifecycle.sql"
 RETENTION_HOURS = int(os.environ.get("TELEMETRY_RETENTION_HOURS", "2"))
-LATE_S = 60  # rows newer than this may still be in flight (out-of-order, processor backlog); rolled up next run
+LATE_S = 20  # rows newer than this may still be in flight (out-of-order, processor backlog); rolled up next run
 LABELS = {"service_overdue_ratio": "overdue for service", "vehicle_age_yrs": "vehicle age", "odo_10k_km": "high mileage",
           "max_coolant_7d": "coolant running hot", "min_batt_v_7d": "12V battery voltage low",
           "dtc_events_7d": "frequent fault codes", "harsh_brakes_7d": "harsh braking", "is_ev": "EV", "is_hybrid": "hybrid"}
