@@ -11,8 +11,8 @@ REPO = "https://github.com/JeevanSarasramSS/fleetpulse"
 ROOT = __file__.rsplit("/docs/", 1)[0]
 
 COVER = {
-    "To be Submitted by:": "To be Submitted by: [Team Name]",
-    "Team Members & Roles:": "Team Members & Roles: Jeevan Sarasram S S – [role] – jeevansiva2005@gmail.com; Sharish – [role] – [email]",
+    "To be Submitted by:": "To be Submitted by: Jeevan Sarasram S S (solo entry)",
+    "Team Members & Roles:": "Team Members & Roles: Jeevan Sarasram S S (Reg. No. RA2311056010035), solo developer: problem framing, architecture, backend, data engineering, ML, DevOps and testing; js9882@srmist.edu.in, jeevansiva2005@gmail.com",
     "Problem Space Chosen:": "Problem Space Chosen: Predictive maintenance for mixed ICE / hybrid / EV fleets (with real-time critical-fault alerting)",
     "Repository URL:": f"Repository URL: {REPO} (tag v1.0-submission)",
     "Demo Video URL": "Demo Video URL (≤ 5 min): [Link]",
