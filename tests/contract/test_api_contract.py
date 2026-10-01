@@ -5,6 +5,7 @@ fields and types it reads from the response. The provider (the live API) is veri
 renamed or retyped field breaks CI before it breaks the dashboard. Run with the integration suite.
 """
 import os
+import time
 
 import httpx
 import pytest
@@ -55,7 +56,12 @@ def headers():
     r.raise_for_status()
     body = r.json()
     assert isinstance(body["access_token"], str) and body["token_type"] == "bearer"  # login contract
-    return {"Authorization": f"Bearer {body['access_token']}"}
+    h = {"Authorization": f"Bearer {body['access_token']}"}
+    deadline = time.time() + 240  # fresh stack: first risk scores land after a batch run or two
+    while time.time() < deadline and not (httpx.get(f"{BASE}/api/v1/risk?limit=1", headers=h).json()["items"]
+                                          and httpx.get(f"{BASE}/api/v1/alerts?limit=1", headers=h).json()["items"]):
+        time.sleep(5)
+    return h
 
 
 @pytest.mark.parametrize("method,path,body,status,fields", CONTRACTS, ids=[f"{c[0]} {c[1][:40]}" for c in CONTRACTS])
