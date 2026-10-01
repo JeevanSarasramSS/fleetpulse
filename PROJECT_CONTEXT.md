@@ -105,6 +105,11 @@ All on 2026-10-01 (IST).
 | Tests | 50 unit (99% core coverage), 8 integration, 10 contract, 6 BDD; all green in CI | GitHub Actions |
 | Submission | Repo tag `v1.0-submission`; solution document docx + PDF in `docs/solution/` | |
 
+**Submission (official instructions, 2026-10-01):** deadline Friday 2 Oct 2026, 11:00 AM, via a Google Form plus a
+shared Google Drive folder ordered: 1 Solution Document (PDF), 2 explainer video (10 minutes max), 3 technical
+artifacts (codebase, GitHub link, documentation). A ready-to-upload copy is built outside the repo at
+`D:\Coding\STEP hackathon round\FleetPulse_Submission\` (rebuild it after any change).
+
 **Open item:** the demo video URL still has to go into the solution document cover and `COVER` in
 `docs/solution/fill_template.py`, then regenerate the docx, re-export the PDF with Word and move the tag.
 
@@ -139,6 +144,7 @@ Upgrade backlog (pick from here, then log it in the changelog):
 
 Newest first. One line per change: date, what changed, why.
 
+- 2026-10-01: Recorded the official submission format and deadline; built the Drive-ready submission folder.
 - 2026-10-01: Added this PROJECT_CONTEXT.md as the living record of the project.
 - 2026-10-01: Consumer session timeout 10 s; recovery test polls up to 180 s (CI chaos step was failing).
 - 2026-10-01: Contract tests wait for first risk scores on a fresh stack.
