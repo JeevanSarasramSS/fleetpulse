@@ -5,6 +5,7 @@ requires-python = ">=3.11"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = ["integration: needs the docker compose stack"]
 addopts = "-m 'not integration'"
 
