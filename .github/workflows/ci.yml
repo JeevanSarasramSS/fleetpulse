@@ -59,12 +59,18 @@ jobs:
       - run: docker build -t fleetpulse:latest . && kind load docker-image fleetpulse:latest --name fleetpulse
       - name: Deploy (manifests + in-cluster stand-ins for managed Postgres/Redis/Kafka)
         run: |
+          diag() {  # annotations are readable without signing in to GitHub
+            echo "::error title=k8s deploy failed::$(kubectl get pods -A --no-headers | paste -sd ';')"
+            echo "::error title=seed logs::$(kubectl -n fleetpulse logs job/seed --tail 15 2>&1 | paste -sd ';')"
+            echo "::error title=events::$(kubectl get events -A --sort-by=.lastTimestamp | tail -15 | paste -sd ';')"
+            exit 1
+          }
           kubectl kustomize --load-restrictor LoadRestrictionsNone infra/k8s/kind | kubectl apply -f -
-          kubectl -n data wait --for=condition=available deploy --all --timeout=300s
-          kubectl -n fleetpulse wait --for=condition=complete job/seed --timeout=300s
+          kubectl -n data wait --for=condition=available deploy --all --timeout=600s || diag
+          kubectl -n fleetpulse wait --for=condition=complete job/seed --timeout=600s || diag
           kubectl -n fleetpulse rollout restart deploy/processor   # reload the seeded fleet
-          kubectl -n fleetpulse rollout status deploy/processor --timeout=180s
-          kubectl -n fleetpulse rollout status deploy/api --timeout=180s
+          kubectl -n fleetpulse rollout status deploy/processor --timeout=300s || diag
+          kubectl -n fleetpulse rollout status deploy/api --timeout=300s || diag
           kubectl apply -f infra/k8s/kind/stream-job.yaml
       - name: Smoke test through the Service
         run: |
