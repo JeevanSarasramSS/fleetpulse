@@ -16,7 +16,7 @@ COVER = {
     "Team Members & Roles:": "Team Members & Roles: Jeevan Sarasram S S (Reg. No. RA2311056010035), solo developer: problem framing, architecture, backend, data engineering, ML, DevOps and testing; js9882@srmist.edu.in, jeevansiva2005@gmail.com",
     "Problem Space Chosen:": "Problem Space Chosen: Predictive maintenance for mixed ICE / hybrid / EV fleets (with real-time critical-fault alerting)",
     "Repository URL:": f"Repository URL: {REPO} (tag v1.0-submission)",
-    "Demo Video URL": "Demo Video URL (explainer, ~6.5 min): [Link]",
+    "Demo Video URL": "Demo Video URL: https://drive.google.com/file/d/1R0No_tNViiExbQ-IPfvOw9y1ivHt7P9Z/view?usp=sharing",
     "Date of Submission:": "Date of Submission: 01/10/2026",
 }
 
@@ -345,7 +345,7 @@ def main(src, out):
             if txt.startswith("Video Link:"):
                 for r in list(p.runs):
                     r._r.getparent().remove(r._r)
-                p.add_run("Video Link: [URL] (script and shot list: docs/demo-script.md)")
+                p.add_run("Video Link: https://drive.google.com/file/d/1R0No_tNViiExbQ-IPfvOw9y1ivHt7P9Z/view?usp=sharing (script: docs/demo-script.md)")
         elif tag == "tbl":
             t = Table(el, doc._body)
             key = t.rows[0].cells[0].text.strip()

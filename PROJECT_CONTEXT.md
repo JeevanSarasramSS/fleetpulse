@@ -116,8 +116,7 @@ shared Google Drive folder ordered: 1 Solution Document (PDF), 2 explainer video
 artifacts (codebase, GitHub link, documentation). A ready-to-upload copy is built outside the repo at
 `D:\Coding\STEP hackathon round\FleetPulse_Submission\` (rebuild it after any change).
 
-**Open item:** the demo video URL still has to go into the solution document cover and `COVER` in
-`docs/solution/fill_template.py`, then regenerate the docx, re-export the PDF with Word and move the tag.
+**Explainer video:** https://drive.google.com/file/d/1R0No_tNViiExbQ-IPfvOw9y1ivHt7P9Z/view?usp=sharing (in the solution document cover and section 13, and the README).
 
 ## 7. Known gaps and planned upgrades
 
@@ -153,6 +152,7 @@ Upgrade backlog (pick from here, then log it in the changelog):
 
 Newest first. One line per change: date, what changed, why.
 
+- 2026-10-02: Explainer video recorded and linked (https://drive.google.com/file/d/1R0No_tNViiExbQ-IPfvOw9y1ivHt7P9Z/view?usp=sharing); fresh README screenshots; final PDF and submission folder.
 - 2026-10-02: Explainer script shortened to ~6.5 min at the owner's request; solution document demo timeline updated.
 - 2026-10-02: Honest soak results; narrated 9.5-min explainer script (docs/demo-script.md); docs and solution document refreshed.
 - 2026-10-01: Fleet-wide events/s KPI (per-second buckets); soak test script.

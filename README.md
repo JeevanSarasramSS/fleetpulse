@@ -6,7 +6,14 @@ It runs end to end on simulated telemetry from **100,000 vehicles** across two O
 
 Built for the Connected Vehicle Intelligence Hackathon (Motorq used as industry reference only; no affiliation).
 
-![dashboard](docs/evidence/dashboard.png)
+**Explainer video:** https://drive.google.com/file/d/1R0No_tNViiExbQ-IPfvOw9y1ivHt7P9Z/view?usp=sharing  
+**Solution Document:** [docs/solution/FleetPulse_Solution_Document.pdf](docs/solution/FleetPulse_Solution_Document.pdf)
+
+![FleetPulse dashboard: live KPIs incl. alert latency and data freshness, fleet map, live alerts, 7-day risk list, copilot](docs/evidence/dashboard.png)
+
+| Vehicle drawer: risk, reasons, trends | Copilot + human-approved work orders | Grafana pipeline dashboard |
+|---|---|---|
+| ![vehicle drawer](docs/evidence/vehicle_drawer.png) | ![copilot](docs/evidence/copilot.png) | ![grafana](docs/evidence/grafana.png) |
 
 ## Quick start
 
